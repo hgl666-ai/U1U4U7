@@ -1,0 +1,240 @@
+#include "bsp_tmc2209.h"
+#include "bsp_gpio.h"
+
+#define BIT_CYCLES    6667    /* 64000000 / 9600 = 6666.67 */
+#define HALF_CYCLES   3333
+
+/* TMC2209 地址 (MS1=MS2=GND → 地址 0) */
+#define TMC_ADDR      0x00
+
+
+static uint8_t crc8(uint8_t *data, uint8_t len)
+{
+    uint8_t crc = 0;
+    for (uint8_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (uint8_t j = 0; j < 8; j++) {
+            if (crc & 0x80)
+                crc = (uint8_t)(crc << 1) ^ 0x07;
+            else
+                crc = (uint8_t)(crc << 1);
+        }
+    }
+    return crc;
+}
+
+/*===== DWT 周期计时 =====*/
+
+static void delay_cycles(uint32_t cycles)
+{
+    uint32_t start = DWT->CYCCNT;
+    while ((DWT->CYCCNT - start) < cycles);
+}
+
+static void dwt_init(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+
+static void tx_mode(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin   = MOTO_TX_Pin;
+    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull  = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(MOTO_TX_Port, &gpio);
+    BSP_GPIO_Write(MOTO_TX_Port, MOTO_TX_Pin, 1);  /* 空闲高电平 */
+}
+
+static void rx_mode(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin   = MOTO_TX_Pin;
+    gpio.Mode  = GPIO_MODE_INPUT;
+    gpio.Pull  = GPIO_NOPULL;
+    HAL_GPIO_Init(MOTO_TX_Port, &gpio);
+}
+
+
+static void uart_tx(uint8_t byte)
+{
+    uint8_t bit;
+
+    /* 起始位 (低) */
+    BSP_GPIO_Write(MOTO_TX_Port, MOTO_TX_Pin, 0);
+    delay_cycles(BIT_CYCLES);
+
+    /* D0..D7, LSB first */
+    for (bit = 0; bit < 8; bit++) {
+        BSP_GPIO_Write(MOTO_TX_Port, MOTO_TX_Pin, byte & 1);
+        delay_cycles(BIT_CYCLES);
+        byte >>= 1;
+    }
+
+    /* 停止位 (高) */
+    BSP_GPIO_Write(MOTO_TX_Port, MOTO_TX_Pin, 1);
+    delay_cycles(BIT_CYCLES);
+}
+
+static uint8_t uart_rx(uint8_t *byte, uint32_t timeout_us)
+{
+    uint32_t start = DWT->CYCCNT;
+    uint32_t tout_cycles = timeout_us * 64;  /* 64 周期/μs @ 64MHz */
+
+    /* 等下降沿 (起始位) */
+    while (BSP_GPIO_Read(MOTO_RX_Port, MOTO_RX_Pin)) {
+        if ((DWT->CYCCNT - start) > tout_cycles) return 0;
+    }
+
+    /* 延时到起始位中心，再跳到 D0 中心 */
+    delay_cycles(HALF_CYCLES + BIT_CYCLES);
+
+    uint8_t val = 0;
+    for (uint8_t i = 0; i < 8; i++) {
+        if (BSP_GPIO_Read(MOTO_RX_Port, MOTO_RX_Pin))
+            val |= (1 << i);              /* LSB first */
+        delay_cycles(BIT_CYCLES);
+    }
+
+    /* 等待停止位结束 (中心 → 边缘 ≈ 半位) */
+    delay_cycles(HALF_CYCLES);
+
+    *byte = val;
+    return 1;
+}
+
+
+/**
+  * @brief  写 TMC2209 寄存器
+  * @param  reg: 寄存器地址 (7-bit)
+  * @param  val: 32-bit 写入值
+  * @retval 1=成功
+  */
+uint8_t TMC_WriteReg(uint8_t reg, uint32_t val)
+{
+    uint8_t buf[7];
+    buf[0] = TMC_ADDR;
+    buf[1] = 0x80 | (reg & 0x7F);
+    buf[2] = (uint8_t)(val >> 24);
+    buf[3] = (uint8_t)(val >> 16);
+    buf[4] = (uint8_t)(val >> 8);
+    buf[5] = (uint8_t)(val);
+    buf[6] = crc8(buf, 6);
+
+    tx_mode();
+
+    /* 发同步字节 + 报文 */
+    uart_tx(0x05);
+    for (uint8_t i = 0; i < 7; i++)
+        uart_tx(buf[i]);
+
+    HAL_Delay(1);   /* TMC2209 帧间间隔，防止连续写被丢弃 */
+    return 1;
+}
+
+/**
+  * @brief  读 TMC2209 寄存器
+  * @param  reg: 寄存器地址 (7-bit)
+  * @param  val: [out] 读回的 32-bit 值
+  * @retval 1=成功, 0=超时
+  */
+uint8_t TMC_ReadReg(uint8_t reg, uint32_t *val)
+{
+    uint8_t buf[3];
+    buf[0] = TMC_ADDR;
+    buf[1] = reg & 0x7F;
+    buf[2] = crc8(buf, 2);
+
+    /* 发送读请求 */
+    tx_mode();
+    uart_tx(0x05);
+    for (uint8_t i = 0; i < 3; i++)
+        uart_tx(buf[i]);
+
+    /* 切为接收模式，等 TMC2209 响应 */
+    rx_mode();
+
+    /* 读 9 字节: 0x05, 0xFF, addr, reg, D31, D23, D15, D7, CRC */
+    uint8_t resp[9];
+    for (uint8_t i = 0; i < 9; i++) {
+        if (!uart_rx(&resp[i], 5000))   /* 5ms 超时 */
+            return 0;
+    }
+
+    /* 验 CRC (从 addr 到 D0) */
+    uint8_t check = crc8(&resp[1], 7);
+    if (check != resp[8])
+        return 0;
+
+    *val =  ((uint32_t)resp[4] << 24)
+          | ((uint32_t)resp[5] << 16)
+          | ((uint32_t)resp[6] << 8)
+          |  (uint32_t)resp[7];
+    return 1;
+}
+
+
+/**
+  * @brief  软件 UART 引脚 + DWT 初始化
+  * @note   在 MX_GPIO_Init() 之后调用
+  */
+void TMC_Init(void)
+{
+    dwt_init();
+    tx_mode();
+}
+
+/**
+  * @brief  写 TMC2209 默认配置
+  * @note   上电后调用一次。TMC2209 掉电配置丢失，每次启动需重写。
+  */
+void TMC_SetDefaults(void)
+{
+    /* 发同步字节让 TMC2209 自动锁定波特率 (9600) */
+    tx_mode();
+    for (uint8_t i = 0; i < 10; i++)
+        uart_tx(0x00);
+    HAL_Delay(5);   /* 等 TMC2209 内部同步完成 */
+
+    /* GCONF: 使能 UART 配置优先，禁用电流降流脚功能 */
+    TMC_WriteReg(TMC_GCONF,
+        (0 << 0)   /*  I_scale_analog: 0=使用 VREF 模拟调流 */
+      | (0 << 2)   /*  internal_Rsense: 0=使用外部采样电阻 */
+      | (0 << 3)   /*  en_SpreadCycle: 0=StealthChop 模式 */
+      | (0 << 4)   /*  shaft: 0=正常方向 */
+      | (0 << 8)   /*  index_otpw: 索引输出未用 */
+      | (0 << 9)   /*  index_step: 同上 */
+      | (1 << 10)  /*  pdn_disable: 1=UART控制PDN, 不管PDN_UART脚 */
+      | (1 << 11)  /*  mstep_reg_select: 1=微步由UART寄存器控制 */
+      | (0 << 12)  /*  test_mode: 0=正常 */
+    );
+
+    /* IHOLD_IRUN:
+     * IHOLD = 8 (~0.7A), IRUN = 15 (~1.3A), IHOLDDELAY = 2 (~065s)
+     */
+    TMC_WriteReg(TMC_IHOLD_IRUN,
+        (8  & 0x1F)       /* IHOLD[4:0] */
+      | ((15 & 0x1F) << 8)  /* IRUN[12:8] */
+      | ((2  & 0x0F) << 16) /* IHOLDDELAY[19:16] */
+    );
+
+    /* TPOWERDOWN: 静止后降流延时 ≈ 2s */
+    TMC_WriteReg(TMC_TPOWERDOWN, 10);
+
+    /* CHOPCONF: 斩波参数，其中 MRES=5 → 1/8 微步 */
+    TMC_WriteReg(TMC_CHOPCONF,
+        (0  << 0)   /*  toff: 0=自动斩波关断时间 */
+      | (0  << 4)   /*  hstrt: 0=默认迟滞 */
+      | (1  << 8)   /*  hend: 1=低端斩波滞后 */
+      | (0  << 16)  /*  TBL: 0=36个时钟空白时间 */
+      | (0  << 24)  /*  TPFD: 0=禁用快速衰减 */
+      | (0  << 25)  /*  disfdcc: 0=使能 */
+      | (0  << 26)  /*  vhighfs: 0 */
+      | (0  << 27)  /*  vhighchm: 0 */
+      | (5  << 28)  /*  MRES[31:28]: 5 = 8微步 (200×8=1600脉冲/圈) */
+    );
+}

@@ -1,0 +1,38 @@
+		帧头F	命令C	帧序号N	数据长度L	数据D	CRC16	备注
+		2	1	2	2	*	2	
+功能	发送方	A5 5B						
+							
+传感器归零	U1		0x10	N	00 00		** **	
+ACK	U4		0x10	N	00 00		** **	
+开始校准	U1		0x11	N	00 00		** **	
+ACK	U4		0x11	N	00 00		** **	
+完成校准	U1		0x12	N	00 00		** **	
+ACK	U4		0x12	N	00 00		** **	
+取消校准	U1		0x13	N	00 00		** **	
+ACK	U4		0x13	N	00 00		** **	
+读取F1ash参数并覆盖	U1		0x14	N	00 00		** **	
+ACK	U4		0x14	N	00 00		** **	
+保存参数到Flash	U1		0x15	N	00 00		** **	
+ACK	U4		0x15	N	00 00		** **	
+恢复出厂默认参数	U1		0x16	N	00 00		** **	
+ACK	U4		0x16	N	00 00		** **	
+设置偏移值	U1		0x17	N	00 02	2字节u16：偏移值，单位um	** **	
+ACK	U4		0x17	N	00 00		** **	
+设置报文周期	U1		0x18	N	00 02	2字节u16：报文周期，单位ms	** **	
+ACK	U4		0x18	N	00 00		** **	
+AMS角度清零	U1		0x20	N	00 00		** **	
+ACK	U4		0x20	N	00 00		** **	
+								
+报文	U4		0x30	N	00 16	"共计22字节：依次如下：
+typedef struct {
+    int16_t length;  // 计算偏移之后的线径值, 单位um
+    int16_t raw_length;  // 原始线径值, 单位um
+    int16_t position;  // 当前磁条位置, 单位um, 范围 0-2000um
+    uint16_t vo1;  // VCP1615-V1: 当前 ADC 值
+    uint16_t vo2;  // VCP1615-V2: 当前 ADC 值
+    uint16_t min_vo1;  // VCP1615-V1: 测量 ADC 最小值
+    uint16_t max_vo1;  // VCP1615-V1: 测量 ADC 最大值
+    uint16_t min_vo2;  // VCP1615-V2: 测量 ADC 最小值
+    uint16_t max_vo2;  // VCP1615-V2: 测量 ADC 最大值
+    int32_t angle_acc;  // ams5600 累计角度
+} ccd_data_t;"	** **	默认50ms周期

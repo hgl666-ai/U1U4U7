@@ -1,0 +1,33 @@
+#ifndef __PROTOCOL_FRAME_H
+#define __PROTOCOL_FRAME_H
+
+#include "main.h"
+#include <stdint.h>
+
+/*===== 帧常量 =====*/
+#define FRAME_HDR0        0xA5
+#define FRAME_HDR1        0x5B
+#define FRAME_HDR_LEN     2
+#define FRAME_CMD_LEN     2
+#define FRAME_SEQ_LEN     2
+#define FRAME_LEN_LEN     2
+#define FRAME_CRC_LEN     2
+#define FRAME_OVERHEAD    (FRAME_HDR_LEN + FRAME_CMD_LEN + FRAME_SEQ_LEN + FRAME_LEN_LEN + FRAME_CRC_LEN)  /* 10 */
+#define FRAME_MAX_DATA    256
+#define FRAME_BUF_SIZE    (FRAME_HDR_LEN + FRAME_CMD_LEN + FRAME_SEQ_LEN + FRAME_LEN_LEN + FRAME_MAX_DATA + FRAME_CRC_LEN)
+
+/*===== CRC16 (MODBUS, 多项式 0x8005, 初值 0xFFFF) =====*/
+uint16_t Frame_CRC16(uint8_t *data, uint16_t len);
+
+/*===== 组帧 =====*/
+/* 返回帧总字节数，buf 至少需 FRAME_BUF_SIZE 字节 */
+uint16_t Frame_Build(uint8_t *buf, uint16_t cmd, uint16_t seq,
+                     uint8_t *data, uint16_t len);
+
+/*===== API =====*/
+/* 从完整的帧缓冲区解析各字段, 返回 1=通过, 0=CRC错 */
+uint8_t Frame_Parse(uint8_t *raw, uint16_t raw_len,
+                    uint16_t *cmd, uint16_t *seq,
+                    uint8_t *data, uint16_t *len);
+
+#endif

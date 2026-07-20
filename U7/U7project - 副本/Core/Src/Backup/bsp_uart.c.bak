@@ -1,0 +1,102 @@
+#include "bsp_uart.h"
+
+UART_FIFO_t uart1_fifo = {0};
+
+volatile uint8_t  rx_data_u1 = 0;
+volatile uint16_t uart1_overrun_cnt = 0;
+
+/**
+  * @brief  串口 FIFO 清空（关中断保护）
+  */
+void UART_ClearBuffer(UART_FIFO_t *fifo)
+{
+    uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    fifo->head = 0;
+    fifo->tail = 0;
+    if (!primask) {
+        __enable_irq();
+    }
+}
+
+/**
+  * @brief  初始化：清空 FIFO 并启动中断接收
+  * @note   必须在 MX_USART1_UART_Init() 之后调用
+  */
+void BSP_UART_Init(void)
+{
+    UART_ClearBuffer(&uart1_fifo);
+    HAL_UART_Receive_IT(&huart1, &rx_data_u1, 1);
+}
+
+/**
+  * @brief  阻塞式发送单字节
+  */
+void UART_SendByte(UART_HandleTypeDef *huart, uint8_t data)
+{
+    HAL_UART_Transmit(huart, &data, 1, 100);
+}
+
+/**
+  * @brief  阻塞式发送数组
+  */
+void UART_SendArray(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t len)
+{
+    HAL_UART_Transmit(huart, pData, len, 1000);
+}
+
+/**
+  * @brief  获取 FIFO 中未读字节数
+  */
+uint16_t UART_GetUnreadLen(UART_FIFO_t *fifo)
+{
+    if (fifo->head >= fifo->tail) {
+        return fifo->head - fifo->tail;
+    } else {
+        return UART_BUF_SIZE - fifo->tail + fifo->head;
+    }
+}
+
+/**
+  * @brief  从 FIFO 读取一个字节
+  * @retval 1=成功, 0=FIFO为空
+  */
+uint8_t UART_ReadByte(UART_FIFO_t *fifo, uint8_t *pData)
+{
+    if (fifo->head == fifo->tail) {
+        return 0;
+    }
+    *pData = fifo->buffer[fifo->tail];
+    fifo->tail = (fifo->tail + 1) % UART_BUF_SIZE;
+    return 1;
+}
+
+/**
+  * @brief  UART 接收完成回调（ISR 上下文）
+  * @note   CubeMX 生成的 HAL_UART_IRQHandler 自动调用此函数
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1) {
+        uint16_t next_head = (uart1_fifo.head + 1) % UART_BUF_SIZE;
+
+        if (next_head != uart1_fifo.tail) {
+            uart1_fifo.buffer[uart1_fifo.head] = rx_data_u1;
+            uart1_fifo.head = next_head;
+        } else {
+            uart1_overrun_cnt++;
+        }
+
+        HAL_UART_Receive_IT(&huart1, &rx_data_u1, 1);
+    }
+}
+
+/**
+  * @brief  UART 错误回调 — 溢出/帧错后重启接收
+  */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1) {
+        HAL_UART_Receive_IT(&huart1, &rx_data_u1, 1);
+    }
+}

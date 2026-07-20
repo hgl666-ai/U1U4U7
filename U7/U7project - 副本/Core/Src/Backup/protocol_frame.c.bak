@@ -1,0 +1,76 @@
+#include "protocol_frame.h"
+#include <string.h>
+
+
+uint16_t Frame_CRC16(uint8_t *data, uint16_t len)
+{
+    uint16_t crc = 0xFFFF;
+    for (uint16_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (uint8_t j = 0; j < 8; j++) {
+            if (crc & 0x0001)
+                crc = (crc >> 1) ^ 0xA001;
+            else
+                crc >>= 1;
+        }
+    }
+    return crc;
+}
+
+/**
+  * @brief  组装一帧
+  * @param  buf:    输出缓冲区 (≥ FRAME_BUF_SIZE)
+  * @param  cmd:    命令码 (2-byte 值)
+  * @param  seq:    帧序号
+  * @param  data:   负载数据 (可为 NULL 若 len==0)
+  * @param  len:    负载长度
+  * @return 帧总字节数
+  */
+uint16_t Frame_Build(uint8_t *buf, uint16_t cmd, uint16_t seq,
+                     uint8_t *data, uint16_t len)
+{
+    buf[0] = FRAME_HDR0;
+    buf[1] = FRAME_HDR1;
+    buf[2] = (uint8_t)(cmd >> 8);
+    buf[3] = (uint8_t)(cmd);
+    buf[4] = (uint8_t)(seq >> 8);
+    buf[5] = (uint8_t)(seq);
+    buf[6] = (uint8_t)(len >> 8);
+    buf[7] = (uint8_t)(len);
+    if (len > 0) memcpy(&buf[8], data, len);
+
+    uint16_t total = 8 + len;
+    uint16_t crc = Frame_CRC16(buf, total);
+    buf[total]     = (uint8_t)(crc >> 8);   /* CRC HI (大端序) */
+    buf[total + 1] = (uint8_t)(crc);        /* CRC LO */
+    return total + 2;
+}
+
+/**
+  * @brief  解析已收完整帧
+  * @param  raw:     帧原始字节
+  * @param  raw_len: 帧总字节数
+  * @param  cmd/seq/data/len: [out] 解析结果, 可传 NULL
+  * @retval 1=CRC通过, 0=CRC错或长度不足
+  */
+uint8_t Frame_Parse(uint8_t *raw, uint16_t raw_len,
+                    uint16_t *cmd, uint16_t *seq,
+                    uint8_t *data, uint16_t *len)
+{
+    if (raw_len < FRAME_OVERHEAD) return 0;
+    if (raw[0] != FRAME_HDR0 || raw[1] != FRAME_HDR1) return 0;
+
+    uint16_t dlen = ((uint16_t)raw[6] << 8) | raw[7];
+    if (raw_len != 8 + dlen + 2) return 0;
+
+    uint16_t calc = Frame_CRC16(raw, 8 + dlen);
+    /* CRC 大端序: [HI][LO] → (HI<<8) | LO */
+    uint16_t recv = ((uint16_t)raw[8 + dlen] << 8) | (uint16_t)raw[8 + dlen + 1];
+    if (calc != recv) return 0;
+
+    if (cmd)  *cmd  = ((uint16_t)raw[2] << 8) | raw[3];
+    if (seq)  *seq  = ((uint16_t)raw[4] << 8) | raw[5];
+    if (data) memcpy(data, &raw[8], dlen);
+    if (len)  *len  = dlen;
+    return 1;
+}
