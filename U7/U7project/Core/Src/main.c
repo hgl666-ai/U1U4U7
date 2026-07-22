@@ -100,30 +100,11 @@ int main(void)
   MX_USART1_UART_Init();             /* 步骤4 */
   MX_ADC1_Init();                    /* 步骤5 */
   /* USER CODE BEGIN 2 */
-  BSP_GPIO_Init();
-  BSP_UART_Init();
-  BSP_Motor_Init();                  /* 电机驱动初始化 (关闭 PWM, 脱机) */
-
-  /* ── 电机驱动测试 (阻塞式) ──
-   * BSP_Motor_Test 内部完成 TMC2209 通信验证 + CW/CCW 运动, 通过 USART1 输出进度
-   * 返回 'T'=全通过, '1'/'2'/'3'=具体失败步骤, 通过串口观察即可
-   */
-  USART1->DR = BSP_Motor_Test();
+  /* ── TMC2209 独立验证 (开漏输出 + 无GPIO重配, 修复读回) ── */
+  USART1->DR = BSP_TMC_Test();
   while (!(USART1->SR & USART_SR_TC));
-  /* ── 测试完成, 进入协议主循环 ── */
-
-  PROTO_Init();                      /* U1↔U7 协议状态机初始化 */
+  while (1);
   /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-    PROTO_Run();                     /* 非阻塞: 处理 U1 下发的 7 条命令 (含电机步进/急停) */
-  }
   /* USER CODE END 3 */
 }
 

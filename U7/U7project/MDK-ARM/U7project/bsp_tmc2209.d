@@ -33,3 +33,4 @@ u7project\bsp_tmc2209.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_e
 u7project\bsp_tmc2209.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h
 u7project\bsp_tmc2209.o: D:\Develop\Keil_MDK\ARM\ARMCC\Bin\..\include\stdbool.h
 u7project\bsp_tmc2209.o: ../Core/Inc/bsp_gpio.h
+u7project\bsp_tmc2209.o: ../Core/Inc/tim.h

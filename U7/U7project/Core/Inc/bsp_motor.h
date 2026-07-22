@@ -30,4 +30,10 @@ uint32_t BSP_Motor_GetDone(void);
   */
 uint8_t  BSP_Motor_Test(void);
 
+/**
+  * @brief  TIM3 独立验证 (纯串口, 无需示波器)
+  * @retval 'T'=正常 'E'=异常
+  */
+uint8_t  BSP_TIM3_Test(void);
+
 #endif

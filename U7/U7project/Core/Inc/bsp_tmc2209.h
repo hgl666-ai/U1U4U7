@@ -313,8 +313,9 @@ typedef union {
 } PWM_AUTO_reg_t;
 
 /*===== API =====*/
-uint8_t  BSP_TMC_Test(void);          /* 自测: T=通 1=无响应 2=CRC错 */
+uint8_t  BSP_TMC_Test(void);          /* 自测: T=全通过 W=写OK读失败 0=失败 */
 void     BSP_TMC_Init(void);
+void     BSP_TMC_Deinit(void);        /* 归还 TIM3 给电机 PWM */
 void     BSP_TMC_SetDefaults(void);
 uint8_t  BSP_TMC_WriteReg(uint8_t reg, uint32_t val);
 uint8_t  BSP_TMC_ReadReg(uint8_t reg, uint32_t *val);

@@ -153,6 +153,99 @@ static void motor_print_u32(uint32_t v)
 }
 
 /**
+  * @brief  TIM3 独立验证 (纯串口, 无需示波器)
+  *   - 读回所有关键寄存器, 打印实际值
+  *   - 验证 CNT 在变化 (证明定时器时钟/计数正常)
+  *   - 短暂启动 PWM, 检查 SR 无异常标志
+  * @retval 'T'=全部正常 'E'=异常
+  */
+uint8_t BSP_TIM3_Test(void)
+{
+    motor_print("\r\n========== TIM3 Verify ==========\r\n");
+
+    /*── 时钟 ──*/
+    uint32_t apb1 = HAL_RCC_GetPCLK1Freq();
+    uint32_t hclk = HAL_RCC_GetHCLKFreq();
+    uint32_t tclk = (apb1 == hclk) ? apb1 : apb1 * 2;
+    motor_print("APB1:"); motor_print_u32(apb1);
+    motor_print(" TIM3_CLK:"); motor_print_u32(tclk); motor_print("\r\n");
+
+    /*── 寄存器快照 ──*/
+    uint16_t cr1  = TIM3->CR1;
+    uint16_t cr2  = TIM3->CR2;
+    uint16_t smcr = TIM3->SMCR;
+    uint16_t dier = TIM3->DIER;
+    uint16_t sr   = TIM3->SR;
+    uint16_t psc  = TIM3->PSC;
+    uint16_t arr  = TIM3->ARR;
+    uint16_t cc1  = TIM3->CCR1;
+    uint16_t cc2  = TIM3->CCR2;
+    uint16_t cnt1 = TIM3->CNT;
+
+    motor_print("CR1=");  motor_print_u32(cr1);
+    motor_print(" CR2="); motor_print_u32(cr2);
+    motor_print(" SMCR="); motor_print_u32(smcr);
+    motor_print(" DIER="); motor_print_u32(dier); motor_print("\r\n");
+
+    motor_print("PSC=");  motor_print_u32(psc);
+    motor_print(" ARR="); motor_print_u32(arr);
+    motor_print(" CCR1="); motor_print_u32(cc1);
+    motor_print(" CCR2="); motor_print_u32(cc2); motor_print("\r\n");
+
+    motor_print("SR=0x"); motor_print_u32(sr);
+    motor_print(" CNT="); motor_print_u32(cnt1); motor_print("\r\n");
+
+    /*── 检查 CubeMX 配置是否写入 ──*/
+    if (arr == 0 || arr == 0xFFFF) {
+        motor_print("FAIL: ARR="); motor_print_u32(arr);
+        motor_print(" (not configured)\r\n");
+        return 'E';
+    }
+    if (cc2 == 0 || cc2 >= arr) {
+        motor_print("WARN: CCR2="); motor_print_u32(cc2);
+        motor_print(" (duty may be 0 or 100%)\r\n");
+    }
+    motor_print("Freq calc: "); motor_print_u32(tclk / ((psc+1)*(arr+1)));
+    motor_print(" Hz\r\n");
+
+    /*── 启动 PWM, 验证 CNT 在跑 ──*/
+    motor_print("Start PWM CH2... ");
+    TIM3->SR = 0;   /* 清全部标志 */
+    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+
+    uint16_t cnt_a = TIM3->CNT;
+    HAL_Delay(2);
+    uint16_t cnt_b = TIM3->CNT;
+    uint16_t sr2   = TIM3->SR;
+    uint16_t cr1b  = TIM3->CR1;
+
+    HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
+
+    motor_print("CEN="); motor_print_u32(cr1b & 1);
+    motor_print(" CNT:"); motor_print_u32(cnt_a);
+    motor_print(" -> ");  motor_print_u32(cnt_b);
+
+    uint16_t delta = (cnt_b > cnt_a) ? (cnt_b - cnt_a) : (cnt_a - cnt_b);
+    if (delta == 0) {
+        motor_print(" STOPPED!\r\n");
+        return 'E';
+    }
+    motor_print(" delta="); motor_print_u32(delta);
+    motor_print(" (OK)\r\n");
+
+    /*── SR 检查: 只关心 BIF(break), 其余标志来自未配置通道, 无害 ──*/
+    motor_print("SR=0x"); motor_print_u32(sr2);
+    if (sr2 & TIM_SR_BIF) {
+        motor_print(" BREAK!\r\n");
+        return 'E';
+    }
+    motor_print(" OK\r\n");
+
+    motor_print("========== RESULT: T ==========\r\n");
+    return 'T';
+}
+
+/**
   * @brief  电机驱动自测
   * @retval 'T'=全通过 '1'=TMC通信失败 '2'=CW超时 '3'=CCW超时
   */
@@ -160,16 +253,20 @@ uint8_t BSP_Motor_Test(void)
 {
     motor_print("\r\n=== Motor Driver Test ===\r\n");
 
-    /* ── 步骤1: TMC2209 通信验证 (初始化 + 写配置 + 读回 GCONF) ── */
+    /* ── 步骤1: TMC2209 通信验证 (初始化 + 写配置 + 尝试读回) ── */
     motor_print("[1] TMC2209 comm... ");
     uint8_t tmc = BSP_TMC_Test();
-    if (tmc != 'T') {
+    if (tmc == 'T') {
+        motor_print("PASS (R/W)\r\n");
+    } else if (tmc == 'W') {
+        motor_print("WARN (write OK, read no response)\r\n");
+        /* 写配置成功即可驱动电机, 继续测试 */
+    } else {
         motor_print("FAIL (code=");
         motor_print_u32(tmc);
         motor_print(")\r\n");
         return '1';
     }
-    motor_print("PASS\r\n");
 
     HAL_Delay(200);
 

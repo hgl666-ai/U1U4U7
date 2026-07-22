@@ -52,7 +52,9 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_RESET);
+  /* PA7 经 R42(1kΩ) 直连 TMC2209 PDN_UART, 启动必须为 HIGH
+   * 否则 PDN 持续低 >2^18 时钟 (~21ms) 触发 TMC2209 掉电 */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(MCPWM_DIR2_GPIO_Port, MCPWM_DIR2_Pin, GPIO_PIN_RESET);
