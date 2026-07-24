@@ -428,6 +428,20 @@ void BSP_TMC_Deinit(void)
     tim3_restore();
 }
 
+/* 临时切到 UART 模式 (保存 PWM, 启动自由计数) */
+void BSP_TMC_UARTMode(void)
+{
+    tim3_save();
+    tim3_uart_init();
+    tx_mode();
+}
+
+/* 恢复 PWM 模式 */
+void BSP_TMC_PWMMode(void)
+{
+    tim3_restore();
+}
+
 /* 探测指定地址的 TMC2209: 发送 GCONF 读请求, 检查 10ms 内是否有任何响应
  * 返回: 1=有响应(检测到下降沿) 0=无响应
  * 用于地址扫描: MS1/MS2 焊接不良可能导致地址不是 0x00 */
@@ -616,9 +630,9 @@ uint8_t BSP_TMC_Test(void)
     tmc_print("[4] Write config registers:\r\n");
 
     GCONF_reg_t gconf = {0};
-    gconf.bits.I_scale_analog   = 0;
+    gconf.bits.I_scale_analog   = 0;   /* 内部5V基准, 忽略VREF */
     gconf.bits.internal_Rsense  = 0;
-    gconf.bits.en_SpreadCycle   = 0;
+    gconf.bits.en_SpreadCycle   = 0;   /* StealthChop */
     gconf.bits.shaft            = 0;
     gconf.bits.index_otpw       = 1;
     gconf.bits.index_step       = 0;
@@ -631,9 +645,9 @@ uint8_t BSP_TMC_Test(void)
     tmc_print("\r\n");
 
     IHOLD_IRUN_reg_t ihold_irun = {0};
-    ihold_irun.bits.irun       = 24;
-    ihold_irun.bits.ihold      = 12;
-    ihold_irun.bits.iholddelay = 3;
+    ihold_irun.bits.irun       = 16;   /* 最大 ~1.5A */
+    ihold_irun.bits.ihold      = 8;
+    ihold_irun.bits.iholddelay = 7;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
     tmc_print_reg("IHOLD_IRUN", TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
     tmc_print("\r\n");
@@ -650,8 +664,8 @@ uint8_t BSP_TMC_Test(void)
     chopconf.bits.hend      = 1;
     chopconf.bits.tbl       = 2;
     chopconf.bits.vsense    = 1;
-    chopconf.bits.mres      = 4;
-    chopconf.bits.intpol    = 1;
+    chopconf.bits.mres      = 4; /* 16微步 */
+    chopconf.bits.intpol    = 0; /* 关插值 */
     chopconf.bits.dedge     = 0;
     chopconf.bits.diss2g    = 0;
     chopconf.bits.diss2vs   = 0;
@@ -683,7 +697,53 @@ uint8_t BSP_TMC_Test(void)
         tmc_print("0x"); tmc_print_hex(gconf_read, 8);
         if (gconf_read == gconf.raw) {
             tmc_print(" (match)\r\n");
+
+            /* TIM3 仍为自由计数模式, 无 PWM 干扰, 验证全部配置 */
+            tmc_print("[5b] Verify all registers:\r\n");
+            {
+                uint32_t v;
+                if (BSP_TMC_ReadReg(0x06, &v))
+                    { tmc_print("  IOIN       =0x"); tmc_print_hex(v,8);
+                      tmc_print(" ENN="); tmc_print_hex(v&1,1);
+                      tmc_print(" DIR="); tmc_print_hex((v>>9)&1,1);
+                      tmc_print(" STEP="); tmc_print_hex((v>>7)&1,1);
+                      tmc_print("\r\n"); }
+                else
+                    { tmc_print("  IOIN read FAIL\r\n"); }
+                if (BSP_TMC_ReadReg(0x10, &v))
+                    { tmc_print("  IHOLD_IRUN =0x"); tmc_print_hex(v,8); tmc_print("\r\n"); }
+                else
+                    { tmc_print("  IHOLD_IRUN read FAIL\r\n"); }
+                if (BSP_TMC_ReadReg(0x6C, &v))
+                    { tmc_print("  CHOPCONF   =0x"); tmc_print_hex(v,8); tmc_print("\r\n"); }
+                else
+                    { tmc_print("  CHOPCONF read FAIL\r\n"); }
+                if (BSP_TMC_ReadReg(0x70, &v))
+                    { tmc_print("  PWMCONF    =0x"); tmc_print_hex(v,8); tmc_print("\r\n"); }
+                else
+                    { tmc_print("  PWMCONF read FAIL\r\n"); }
+                if (BSP_TMC_ReadReg(0x01, &v))
+                    { tmc_print("  GSTAT      =0x"); tmc_print_hex(v,8);
+                      if (v) tmc_print(" *** FAULT ***"); tmc_print("\r\n"); }
+                else
+                    { tmc_print("  GSTAT read FAIL\r\n"); }
+                if (BSP_TMC_ReadReg(0x6F, &v))
+                    { tmc_print("  DRV_STATUS =0x"); tmc_print_hex(v,8);
+                      if (v & (1<<6))  tmc_print(" OLA");   /* Open Load A */
+                      if (v & (1<<7))  tmc_print(" OLB");   /* Open Load B */
+                      if (v & (1<<2))  tmc_print(" S2GA");  /* Short A */
+                      if (v & (1<<3))  tmc_print(" S2GB");  /* Short B */
+                      if (v & (1<<0))  tmc_print(" OT");    /* Overtemp */
+                      tmc_print("\r\n"); }
+                else
+                    { tmc_print("  DRV_STATUS read FAIL\r\n"); }
+            }
+
             tmc_print("========== RESULT: PASS (R/W) ==========\r\n");
+
+            /* 清 GSTAT 故障标志 (写1清除 latched bits) */
+            BSP_TMC_WriteReg(0x01, 0x00000007);
+
             tim3_restore();
             return 'T';
         } else {
@@ -704,7 +764,7 @@ uint8_t BSP_TMC_Test(void)
 void BSP_TMC_SetDefaults(void)
 {
     GCONF_reg_t gconf = {0};
-    gconf.bits.I_scale_analog   = 0;
+    gconf.bits.I_scale_analog   = 1;   /* 内部5V基准, 忽略VREF */
     gconf.bits.internal_Rsense  = 0;
     gconf.bits.en_SpreadCycle   = 0;
     gconf.bits.shaft            = 0;

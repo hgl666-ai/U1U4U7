@@ -321,4 +321,8 @@ uint8_t  BSP_TMC_WriteReg(uint8_t reg, uint32_t val);
 uint8_t  BSP_TMC_ReadReg(uint8_t reg, uint32_t *val);
 uint8_t  BSP_TMC_IsAlive(void);
 
+/* 暴露给 motor test 做 STEP 验证: 临时切 TIM3 到 UART 模式读写寄存器 */
+void     BSP_TMC_UARTMode(void);      /* 保存 PWM 状态, 切自由计数 */
+void     BSP_TMC_PWMMode(void);       /* 恢复 PWM 状态 */
+
 #endif

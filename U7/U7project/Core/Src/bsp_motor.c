@@ -60,7 +60,9 @@ void BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
     __HAL_TIM_CLEAR_FLAG(&htim3, TIM_FLAG_UPDATE);
 
     BSP_EN2_Set(0);                      /* 使能电机 */
+    GPIOA->BRR = GPIO_PIN_5;             /* 直接寄存器确保拉低 PA5 */
     HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_2);
+    TIM3->DIER |= TIM_DIER_UIE;          /* 补设更新中断 (HAL有时漏掉) */
 }
 
 /**
@@ -118,11 +120,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
  *   - 直接写 USART1->DR, 不干扰 DMA RX 通道
  *====================================================================*/
 
-/* 测试参数 */
-#define MOTOR_TEST_STEPS    1600U       /* 1 整圈 @ 1/8 微步 (200×8) */
-#define MOTOR_TEST_TIMEOUT  3000U       /* 单向运动超时 3000ms */
-
-/* 简单的串口打印 (直接写 DR, 等 TXE) */
+/* 简单串口打印 */
 static void motor_print(const char *s)
 {
     while (*s) {
@@ -249,69 +247,76 @@ uint8_t BSP_TIM3_Test(void)
   * @brief  电机驱动自测
   * @retval 'T'=全通过 '1'=TMC通信失败 '2'=CW超时 '3'=CCW超时
   */
+/* 测试预设 */
+#define REV_STEPS    3200U    /* 1圈 @ 16微步 (200×16) */
+#define TIMEOUT_MS   10000U   /* 10s 超时 */
+
+static uint8_t motor_run_test(const char *label, uint8_t dir,
+                               uint32_t steps, uint32_t freq_hz)
+{
+    motor_print(label);
+    BSP_Motor_Move(dir, steps, freq_hz);
+
+    uint32_t to = TIMEOUT_MS;
+    while (BSP_Motor_IsBusy() && to--) HAL_Delay(1);
+
+    if (BSP_Motor_IsBusy()) {
+        BSP_Motor_Stop();
+        motor_print(" FAIL (timeout)\r\n");
+        return 0;
+    }
+    motor_print(" PASS (done=");
+    motor_print_u32(BSP_Motor_GetDone());
+    motor_print(")\r\n");
+    return 1;
+}
+
+/**
+  * @brief  电机驱动全功能测试
+  *   - TMC2209 通信 + 配置验证
+  *   - CW/CCW 多速度: 500Hz(1圈) 2000Hz(5圈) 5000Hz(10圈)
+  * @retval 'T'=全通过 '1'=通信失败 '2'=运动超时
+  */
 uint8_t BSP_Motor_Test(void)
 {
-    motor_print("\r\n=== Motor Driver Test ===\r\n");
+    motor_print("\r\n===== Motor Test =====\r\n");
 
-    /* ── 步骤1: TMC2209 通信验证 (初始化 + 写配置 + 尝试读回) ── */
-    motor_print("[1] TMC2209 comm... ");
+    /*── TMC2209 ──*/
+    motor_print("[1] TMC2209... ");
     uint8_t tmc = BSP_TMC_Test();
     if (tmc == 'T') {
-        motor_print("PASS (R/W)\r\n");
+        motor_print("  PASS\r\n");
     } else if (tmc == 'W') {
-        motor_print("WARN (write OK, read no response)\r\n");
-        /* 写配置成功即可驱动电机, 继续测试 */
+        motor_print("  WARN (W=OK R=FAIL, continue)\r\n");
     } else {
-        motor_print("FAIL (code=");
-        motor_print_u32(tmc);
-        motor_print(")\r\n");
+        motor_print("  FAIL\r\n");
         return '1';
     }
-
     HAL_Delay(200);
 
-    /* ── 步骤2: 电机 CW 运动 1600 步 (1 整圈) ── */
-    motor_print("[2] Motor CW ");
-    motor_print_u32(MOTOR_TEST_STEPS);
-    motor_print(" steps @ 2kHz... ");
+    /*── 速度测试 ──*/
+    motor_print("[2] Speed tests:\r\n");
+    uint8_t ok = 1;
 
-    BSP_Motor_Move(MOTOR_DIR_CW, MOTOR_TEST_STEPS, MOTOR_SPEED_SLOW);
+    ok &= motor_run_test("  500Hz  CW 1rev... ", MOTOR_DIR_CW,  REV_STEPS,      500);
+    HAL_Delay(300);
+    ok &= motor_run_test("  500Hz CCW 1rev... ", MOTOR_DIR_CCW, REV_STEPS,      500);
+    HAL_Delay(300);
 
-    uint32_t to = MOTOR_TEST_TIMEOUT;
-    while (BSP_Motor_IsBusy() && to--) {
-        HAL_Delay(1);
-    }
-    if (BSP_Motor_IsBusy()) {
-        BSP_Motor_Stop();
-        motor_print("FAIL (timeout)\r\n");
+    ok &= motor_run_test(" 2000Hz  CW 5rev... ", MOTOR_DIR_CW,  REV_STEPS * 5, 2000);
+    HAL_Delay(300);
+    ok &= motor_run_test(" 2000Hz CCW 5rev... ", MOTOR_DIR_CCW, REV_STEPS * 5, 2000);
+    HAL_Delay(300);
+
+    ok &= motor_run_test(" 5000Hz  CW 10rev...", MOTOR_DIR_CW,  REV_STEPS * 10, 5000);
+    HAL_Delay(300);
+    ok &= motor_run_test(" 5000Hz CCW 10rev...", MOTOR_DIR_CCW, REV_STEPS * 10, 5000);
+
+    if (ok) {
+        motor_print("===== ALL PASS =====\r\n");
+        return 'T';
+    } else {
+        motor_print("===== SOME FAILED =====\r\n");
         return '2';
     }
-    motor_print("PASS (done=");
-    motor_print_u32(BSP_Motor_GetDone());
-    motor_print(")\r\n");
-
-    HAL_Delay(500);   /* 停顿 0.5s 便于观察 */
-
-    /* ── 步骤3: 电机 CCW 运动 1600 步 (回到原位) ── */
-    motor_print("[3] Motor CCW ");
-    motor_print_u32(MOTOR_TEST_STEPS);
-    motor_print(" steps @ 2kHz... ");
-
-    BSP_Motor_Move(MOTOR_DIR_CCW, MOTOR_TEST_STEPS, MOTOR_SPEED_SLOW);
-
-    to = MOTOR_TEST_TIMEOUT;
-    while (BSP_Motor_IsBusy() && to--) {
-        HAL_Delay(1);
-    }
-    if (BSP_Motor_IsBusy()) {
-        BSP_Motor_Stop();
-        motor_print("FAIL (timeout)\r\n");
-        return '3';
-    }
-    motor_print("PASS (done=");
-    motor_print_u32(BSP_Motor_GetDone());
-    motor_print(")\r\n");
-
-    motor_print("=== ALL PASS ===\r\n");
-    return 'T';
 }

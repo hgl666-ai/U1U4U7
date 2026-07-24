@@ -100,8 +100,8 @@ int main(void)
   MX_USART1_UART_Init();             /* 步骤4 */
   MX_ADC1_Init();                    /* 步骤5 */
   /* USER CODE BEGIN 2 */
-  /* ── TMC2209 独立验证 (开漏输出 + 无GPIO重配, 修复读回) ── */
-  USART1->DR = BSP_TMC_Test();
+  /* ── 电机驱动全功能测试 (TMC2209通信 + CW 1600步 + CCW 1600步) ── */
+  USART1->DR = BSP_Motor_Test();
   while (!(USART1->SR & USART_SR_TC));
   while (1);
   /* USER CODE END 2 */
