@@ -13,6 +13,7 @@
 #define PROTO_CMD_MOTOR_STOP   0x24
 #define PROTO_CMD_READ_INPUT   0x25
 #define PROTO_CMD_SELF_TEST    0x26
+#define PROTO_CMD_GET_ADC      0x28
 #define PROTO_CMD_RESET        0x27
 
 #define PROTO_DIR_CW    0x00

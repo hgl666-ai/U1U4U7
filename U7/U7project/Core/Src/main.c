@@ -100,10 +100,53 @@ int main(void)
   MX_USART1_UART_Init();             /* 步骤4 */
   MX_ADC1_Init();                    /* 步骤5 */
   /* USER CODE BEGIN 2 */
-  /* ── 电机驱动全功能测试 (TMC2209通信 + CW 1600步 + CCW 1600步) ── */
-  USART1->DR = BSP_Motor_Test();
-  while (!(USART1->SR & USART_SR_TC));
-  while (1);
+  BSP_GPIO_Init();
+  BSP_UART_Init();
+  USART1->CR1 |= USART_CR1_RE;
+  BSP_ADC_Init();
+
+  /* 诊断: 发送 USART1 寄存器值 */
+  {
+      uint16_t cr1 = USART1->CR1, sr = USART1->SR;
+      char hex[] = "0123456789ABCDEF";
+      USART1->DR = 'C'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '1'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '='; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = hex[(cr1>>12)&0xF]; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = hex[(cr1>>8)&0xF]; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = hex[(cr1>>4)&0xF]; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = hex[cr1&0xF]; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = ' '; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = 'S'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '='; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = hex[(sr>>8)&0xF]; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = hex[(sr>>4)&0xF]; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = hex[sr&0xF]; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '\r'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '\n'; while(!(USART1->SR&USART_SR_TC));
+  }
+
+  /* ADC 验证最先输出 */
+  {
+      uint8_t ok; uint16_t r = BSP_ADC_ReadRaw(ADC_CH_ADC0, &ok);
+      USART1->DR = '\r'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '\n'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = 'A'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = 'D'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = 'C'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '='; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = ok ? '1' : '0'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '\r'; while(!(USART1->SR&USART_SR_TC));
+      USART1->DR = '\n'; while(!(USART1->SR&USART_SR_TC));
+  }
+
+  //BSP_Motor_Init();
+  //USART1->DR = BSP_Motor_Test();
+  //while (!(USART1->SR & USART_SR_TC));
+  PROTO_Init();
+  while (1) {
+    PROTO_Run();
+  }
   /* USER CODE END 2 */
   /* USER CODE END 3 */
 }
