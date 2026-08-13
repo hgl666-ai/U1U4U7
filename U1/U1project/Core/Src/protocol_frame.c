@@ -1,0 +1,154 @@
+#include "protocol_frame.h"
+#include <string.h>
+
+
+uint16_t Frame_CRC16(uint8_t *data, uint16_t len)
+{
+    uint16_t crc = 0xFFFF;
+    for (uint16_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (uint8_t j = 0; j < 8; j++) {
+            if (crc & 0x0001)
+                crc = (crc >> 1) ^ 0xA001;
+            else
+                crc >>= 1;
+        }
+    }
+    return crc;
+}
+
+/*====================================================================
+ * 标准帧 (2B CMD, PC↔U1)
+ * 格式: A5 5B | CMD(2) | SEQ(2) | LEN(2) | DATA | CRC16(2)
+ *====================================================================*/
+
+uint16_t Frame_Build(uint8_t *buf, uint16_t cmd, uint16_t seq,
+                     uint8_t *data, uint16_t len)
+{
+    buf[0] = FRAME_HDR0;
+    buf[1] = FRAME_HDR1;
+    buf[2] = (uint8_t)(cmd >> 8);
+    buf[3] = (uint8_t)(cmd);
+    buf[4] = (uint8_t)(seq >> 8);
+    buf[5] = (uint8_t)(seq);
+    buf[6] = (uint8_t)(len >> 8);
+    buf[7] = (uint8_t)(len);
+    if (len > 0) memcpy(&buf[8], data, len);
+
+    uint16_t total = 8 + len;
+    uint16_t crc = Frame_CRC16(buf, total);
+    buf[total]     = (uint8_t)(crc >> 8);
+    buf[total + 1] = (uint8_t)(crc);
+    return total + 2;
+}
+
+uint8_t Frame_Parse(uint8_t *raw, uint16_t raw_len,
+                    uint16_t *cmd, uint16_t *seq,
+                    uint8_t *data, uint16_t *len)
+{
+    if (raw_len < FRAME_OVERHEAD) return 0;
+    if (raw[0] != FRAME_HDR0 || raw[1] != FRAME_HDR1) return 0;
+
+    uint16_t dlen = ((uint16_t)raw[6] << 8) | raw[7];
+    if (raw_len != 8 + dlen + 2) return 0;
+
+    uint16_t calc = Frame_CRC16(raw, 8 + dlen);
+    uint16_t recv = ((uint16_t)raw[8 + dlen] << 8) | (uint16_t)raw[8 + dlen + 1];
+    if (calc != recv) return 0;
+
+    if (cmd)  *cmd  = ((uint16_t)raw[2] << 8) | raw[3];
+    if (seq)  *seq  = ((uint16_t)raw[4] << 8) | raw[5];
+    if (data) memcpy(data, &raw[8], dlen);
+    if (len)  *len  = dlen;
+    return 1;
+}
+
+/*====================================================================
+ * 1 字节 CMD 帧 (U1↔U7 / U1↔U4)
+ * 格式: A5 5B | CMD(1) | SEQ(2) | LEN(2) | DATA | CRC16(2)
+ *====================================================================*/
+
+uint16_t Frame_Build_1B(uint8_t *buf, uint8_t cmd, uint16_t seq,
+                        uint8_t *data, uint16_t len)
+{
+    buf[0] = FRAME_HDR0;
+    buf[1] = FRAME_HDR1;
+    buf[2] = cmd;                       /* 1 字节 CMD */
+    buf[3] = (uint8_t)(seq >> 8);
+    buf[4] = (uint8_t)(seq);
+    buf[5] = (uint8_t)(len >> 8);
+    buf[6] = (uint8_t)(len);
+    if (len > 0) memcpy(&buf[7], data, len);
+
+    uint16_t total = 7 + len;
+    uint16_t crc = Frame_CRC16(buf, total);
+    buf[total]     = (uint8_t)(crc >> 8);
+    buf[total + 1] = (uint8_t)(crc);
+    return total + 2;
+}
+
+uint8_t Frame_Parse_1B(uint8_t *raw, uint16_t raw_len,
+                       uint8_t *cmd, uint16_t *seq,
+                       uint8_t *data, uint16_t *len)
+{
+    if (raw_len < FRAME_OVERHEAD_1B) return 0;
+    if (raw[0] != FRAME_HDR0 || raw[1] != FRAME_HDR1) return 0;
+
+    uint16_t dlen = ((uint16_t)raw[5] << 8) | raw[6];
+    if (raw_len != 7 + dlen + 2) return 0;
+
+    uint16_t calc = Frame_CRC16(raw, 7 + dlen);
+    uint16_t recv = ((uint16_t)raw[7 + dlen] << 8) | (uint16_t)raw[7 + dlen + 1];
+    if (calc != recv) return 0;
+
+    if (cmd)  *cmd  = raw[2];
+    if (seq)  *seq  = ((uint16_t)raw[3] << 8) | raw[4];
+    if (data) memcpy(data, &raw[7], dlen);
+    if (len)  *len  = dlen;
+    return 1;
+}
+
+/*====================================================================
+ * 1 字节 CMD 帧, CRC 低字节在前 (U1↔U4 专用, U4 用 MODBUS RTU 序)
+ * [2026-08-12] U4 实测 CRC 低字节在前; U1↔U7 保持高字节在前
+ *====================================================================*/
+
+uint16_t Frame_Build_1B_LE(uint8_t *buf, uint8_t cmd, uint16_t seq,
+                           uint8_t *data, uint16_t len)
+{
+    buf[0] = FRAME_HDR0;
+    buf[1] = FRAME_HDR1;
+    buf[2] = cmd;                       /* 1 字节 CMD */
+    buf[3] = (uint8_t)(seq >> 8);
+    buf[4] = (uint8_t)(seq);
+    buf[5] = (uint8_t)(len >> 8);
+    buf[6] = (uint8_t)(len);
+    if (len > 0) memcpy(&buf[7], data, len);
+
+    uint16_t total = 7 + len;
+    uint16_t crc = Frame_CRC16(buf, total);
+    buf[total]     = (uint8_t)(crc);         /* 低字节在前 */
+    buf[total + 1] = (uint8_t)(crc >> 8);
+    return total + 2;
+}
+
+uint8_t Frame_Parse_1B_LE(uint8_t *raw, uint16_t raw_len,
+                          uint8_t *cmd, uint16_t *seq,
+                          uint8_t *data, uint16_t *len)
+{
+    if (raw_len < FRAME_OVERHEAD_1B) return 0;
+    if (raw[0] != FRAME_HDR0 || raw[1] != FRAME_HDR1) return 0;
+
+    uint16_t dlen = ((uint16_t)raw[5] << 8) | raw[6];
+    if (raw_len != 7 + dlen + 2) return 0;
+
+    uint16_t calc = Frame_CRC16(raw, 7 + dlen);
+    uint16_t recv = ((uint16_t)raw[7 + dlen]) | ((uint16_t)raw[7 + dlen + 1] << 8);  /* 低字节在前 */
+    if (calc != recv) return 0;
+
+    if (cmd)  *cmd  = raw[2];
+    if (seq)  *seq  = ((uint16_t)raw[3] << 8) | raw[4];
+    if (data) memcpy(data, &raw[7], dlen);
+    if (len)  *len  = dlen;
+    return 1;
+}
