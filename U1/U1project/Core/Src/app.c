@@ -264,61 +264,84 @@ static void APP_TestStep(void)
     int ret;
     switch (test_step) {
 
-    /*── U4 连通 + 校准 ──*/
-    case 0:  APP_Print("[TEST] U4 Ping...\r\n");     test_step++; break;
+    /*── U4 命令测试 (0x10-0x16, 0x20) ──*/
+    case 0:  APP_Print("[TEST] U4 Zero Sensor(0x10)...\r\n"); test_step++; break;
     case 1:
-        ret = U4_Ping();
-        if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL: U4 offline\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
-        test_step++; break;
-    case 2:  APP_Print("[TEST] U4 Zero Sensor...\r\n"); test_step++; break;
-    case 3:
         ret = U4_ZeroSensor();
         if (ret == U4_PROTO_PENDING) break;
         if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
         else                     { APP_Print("  PASS\r\n"); }
         test_step++; break;
-    case 4:  APP_Print("[TEST] U4 Start Calib...\r\n"); test_step++; break;
-    case 5:
+    case 2:  APP_Print("[TEST] U4 Start Calib(0x11)...\r\n"); test_step++; break;
+    case 3:
         ret = U4_StartCalib();
         if (ret == U4_PROTO_PENDING) break;
         if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
         else                     { APP_Print("  PASS\r\n"); }
         test_step++; break;
-    case 6:  APP_Print("[TEST] U4 Finish Calib...\r\n"); test_step++; break;
-    case 7:
+    case 4:  APP_Print("[TEST] U4 Finish Calib(0x12)...\r\n"); test_step++; break;
+    case 5:
         ret = U4_FinishCalib();
         if (ret == U4_PROTO_PENDING) break;
         if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
         else                     { APP_Print("  PASS\r\n"); }
         test_step++; break;
-    case 8:  APP_Print("[TEST] U4 Read Flash Param...\r\n"); test_step++; break;
+    case 6:  APP_Print("[TEST] U4 Cancel Calib(0x13)...\r\n"); test_step++; break;
+    case 7:
+        ret = U4_CancelCalib();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 8:  APP_Print("[TEST] U4 Read Flash Param(0x14)...\r\n"); test_step++; break;
     case 9:
         ret = U4_ReadFlashParam();
         if (ret == U4_PROTO_PENDING) break;
         if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
         else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 10: APP_Print("[TEST] U4 Save Flash Param(0x15)...\r\n"); test_step++; break;
+    case 11:
+        ret = U4_SaveFlashParam();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 12: APP_Print("[TEST] U4 Factory Reset(0x16)...\r\n"); test_step++; break;
+    case 13:
+        ret = U4_FactoryReset();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 14: APP_Print("[TEST] U4 AMS Zero(0x20)...\r\n"); test_step++; break;
+    case 15:
+        ret = U4_AmsZero();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 16:
         /* U4 在线时采集 4 路 ADC (VO1/VO2/AMS5600/VDD) 并以 CMD=0x0014 上报 */
         if (test_mode == 0 || test_mode == 1) {
             APP_Print("[TEST] ADC Channels (VO1/VO2/AMS5600/VDD)...\r\n");
             APP_SendAdcResult();
         }
-        test_step = (test_mode == 0) ? 10 : 20;
+        test_step = (test_mode == 0) ? 17 : 23;
         break;
 
     /*── U7 测试 ──*/
-    case 10:
+    case 17:
         BSP_U7_Enable();
         APP_Print("[TEST] U7 Ping...\r\n"); test_step++; break;
-    case 11:
+    case 18:
         ret = U7_Ping();
         if (ret == U7_PROTO_PENDING) break;
         if (ret != U7_PROTO_OK) { APP_Print("  FAIL: U7 offline\r\n"); test_fail = 1; }
         else                     { APP_Print("  PASS\r\n"); }
         test_step++; break;
-    case 12: APP_Print("[TEST] U7 Version...\r\n"); test_step++; break;
-    case 13: {
+    case 19: APP_Print("[TEST] U7 Version...\r\n"); test_step++; break;
+    case 20: {
         uint8_t maj, min;
         ret = U7_GetVersion(&maj, &min);
         if (ret == U7_PROTO_PENDING) break;
@@ -326,18 +349,18 @@ static void APP_TestStep(void)
         else { APP_Print("  v"); APP_PrintU16(maj); APP_Print("."); APP_PrintU16(min); APP_Print("\r\n"); }
         test_step++; break;
     }
-    case 14: APP_Print("[TEST] U7 SelfTest...\r\n"); test_step++; break;
-    case 15: {
+    case 21: APP_Print("[TEST] U7 SelfTest...\r\n"); test_step++; break;
+    case 22: {
         uint8_t r;
         ret = U7_SelfTest(&r);
         if (ret == U7_PROTO_PENDING) break;
         if (ret != U7_PROTO_OK || r != 0) { APP_Print("  FAIL\r\n"); test_fail = 1; }
         else { APP_Print("  PASS\r\n"); }
-        test_step = 20; break;
+        test_step = 23; break;
     }
 
     /*── 结果 ──*/
-    case 20:
+    case 23:
         BSP_U7_Disable();
         {
             uint16_t result_cmd = (test_mode == 1) ? APP_CMD_TEST_U4
@@ -355,7 +378,7 @@ static void APP_TestStep(void)
         }
         app_state = APP_STATE_IDLE; test_step = -1; break;
 
-    default: test_step = 20; break;
+    default: test_step = 23; break;
     }
 }
 
@@ -457,9 +480,9 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         }
         uint8_t resp[4];
         if (ret == U4_PROTO_OK) {
-            resp[0] = 1; resp[1] = maj; resp[2] = min; resp[3] = rev;
+            resp[0] = APP_STATUS_OK; resp[1] = maj; resp[2] = min; resp[3] = rev;
         } else {
-            resp[0] = 0; resp[1] = 0; resp[2] = 0xFF; resp[3] = 0xFF;
+            resp[0] = APP_STATUS_ERR_TIMEOUT; resp[1] = 0; resp[2] = 0xFF; resp[3] = 0xFF;
         }
         APP_SendAck(MGR_CMD_QUERY_U4_VER, resp, 4);
         break;
@@ -487,67 +510,6 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
     case MGR_CMD_FW_END:
         FwUpload_Handle(cmd, data, len);
         break;
-
-    /* 诊断: 读两槽头部 (检测双槽固件完整性)
-     * ACK 16B: [0..7]=slot0@0x10000, [8..15]=slot1@0x20000
-     *   每槽 8B: [4B 大小 LE][3B 版本][1B 完整标志 0xA5=COMPLETE] */
-    case MGR_CMD_FLASH_HEAD: {
-        uint8_t hdr[16];
-        GD25Q_ReadBuffer(hdr, FW_SLOT0_BASE, FW_HEAD_SIZE);
-        GD25Q_ReadBuffer(hdr + FW_HEAD_SIZE, FW_SLOT1_BASE, FW_HEAD_SIZE);
-        APP_SendAck(MGR_CMD_FLASH_HEAD, hdr, 16);
-        break;
-    }
-
-    /* 诊断: 读回 U4 flash 16B (验证烧录是否正确)
-     * 请求 LEN=4, DATA=[4B 完整地址 大端]; 会进 U4 bootloader 读, 读完 U4 停在 bootloader
-     * [2026-08-11] 修正: 原 LEN=3 把 0x08000000 错拼成 0x00080000 被 bootloader NACK */
-    case MGR_CMD_U4_FLASH_READ: {
-        if (len < 4) { uint8_t e = APP_STATUS_ERR_PARAM; APP_SendAck(MGR_CMD_U4_FLASH_READ, &e, 1); break; }
-        uint32_t addr = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16)
-                      | ((uint32_t)data[2] << 8) | (uint32_t)data[3];
-        U4_ScanPause(1);
-        U4_UART_SetMode(0);   /* 8E1 用于进 bootloader 读 (默认是 8N1) */
-        if (ISP_Connect() != ISP_OK) {
-            U4_UART_SetMode(1);   /* 恢复 8N1 */
-            U4_ScanPause(0);
-            uint8_t e = APP_STATUS_ERR_PROG; APP_SendAck(MGR_CMD_U4_FLASH_READ, &e, 1); break;
-        }
-        uint8_t buf[16];
-        ISP_Result_t r = ISP_ReadMemory(addr, buf, 16);
-        U4_UART_SetMode(1);   /* 恢复 8N1 */
-        U4_ScanPause(0);
-        if (r != ISP_OK) {
-            uint8_t e = APP_STATUS_ERR_PROG; APP_SendAck(MGR_CMD_U4_FLASH_READ, &e, 1); break;
-        }
-        APP_SendAck(MGR_CMD_U4_FLASH_READ, buf, 16);
-        break;
-    }
-
-    /* 诊断: 检测 U4 是否卡在 bootloader
-     * 不改 BOOT0/不复位, 直接发 0x7F, 看是否回 0x79
-     * ACK 1B: 1=U4 在 bootloader, 0=不在 (跑应用/挂死/断电) */
-    case MGR_CMD_U4_BOOTSTATE: {
-        uint8_t resp = 0;
-        U4_ScanPause(1);
-        U4_UART_SetMode(0);   /* 8E1 用于检测 bootloader */
-        HAL_UART_DMAStop(&huart2);   /* 停 DMA, 用阻塞接收 */
-        __HAL_UART_CLEAR_FLAG(&huart2, USART_SR_ORE | USART_SR_FE | USART_SR_NE);
-        (void)huart2.Instance->DR;
-        UART_SendByte(&huart2, 0x7F);
-        uint32_t tick = HAL_GetTick();
-        uint8_t b;
-        while ((HAL_GetTick() - tick) < 100) {
-            if (HAL_UART_Receive(&huart2, &b, 1, 50) == HAL_OK) {
-                if (b == 0x79) { resp = 1; }
-                break;   /* 收到字节即判断 (0x79=bootloader, 其他=不是) */
-            }
-        }
-        U4_UART_SetMode(1);   /* 恢复 8N1 */
-        U4_ScanPause(0);
-        APP_SendAck(MGR_CMD_U4_BOOTSTATE, &resp, 1);
-        break;
-    }
 
     /* 查询固件版本: 从 SPI Flash 头部读取 (不依赖 U4 上电)
      * ACK 4B: [1B 状态码][3B 版本号]
@@ -581,15 +543,6 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         break;
     }
 
-    /* 暂未实现 */
-    case MGR_CMD_U1_IAP_START:
-    case MGR_CMD_U1_IAP_DATA:
-    case MGR_CMD_U1_IAP_END:
-    case MGR_CMD_U7_IAP_START:
-    case MGR_CMD_U7_IAP_DATA:
-    case MGR_CMD_U7_IAP_END: {
-        uint8_t e = APP_STATUS_ERR_NIY; APP_SendAck(cmd, &e, 1); break;
-    }
 
     /* ADC 极值校准 (adc_calib 模块) */
     case MGR_CMD_ADC_CALIB: {
@@ -658,7 +611,7 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         if (app_state != APP_STATE_IDLE) {
             uint8_t e = APP_STATUS_BUSY; APP_SendAck(APP_CMD_TEST_U7, &e, 1); break;
         }
-        test_step = 10; test_fail = 0; test_mode = 2;
+        test_step = 17; test_fail = 0; test_mode = 2;
         app_state = APP_STATE_TESTING; APP_SetRGB(RGB_CYAN, 2);
         break;
 
@@ -776,16 +729,16 @@ void APP_Run(void)
         int ret = U4_GetVersion(&maj, &min, &rev);
         /* U4不在线时3秒超时返回离线 */
         if (ret == U4_PROTO_PENDING && HAL_GetTick() - deferred_tick > 3000) {
-            uint8_t resp[4] = {0, 0, 0xFF, 0xFF};
+            uint8_t resp[4] = {APP_STATUS_ERR_TIMEOUT, 0, 0xFF, 0xFF};
             APP_SendAck(MGR_CMD_QUERY_U4_VER, resp, 4);
             deferred_cmd = 0;
         }
         if (ret != U4_PROTO_PENDING) {
             uint8_t resp[4];
             if (ret == U4_PROTO_OK) {
-                resp[0] = 1; resp[1] = maj; resp[2] = min; resp[3] = rev;
+                resp[0] = APP_STATUS_OK; resp[1] = maj; resp[2] = min; resp[3] = rev;
             } else {
-                resp[0] = 0; resp[1] = 0; resp[2] = 0xFF; resp[3] = 0xFF;
+                resp[0] = APP_STATUS_ERR_TIMEOUT; resp[1] = 0; resp[2] = 0xFF; resp[3] = 0xFF;
             }
             APP_SendAck(MGR_CMD_QUERY_U4_VER, resp, 4);
             deferred_cmd = 0;

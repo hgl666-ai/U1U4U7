@@ -26,13 +26,8 @@ typedef enum {
 } RGB_Color_t;
 
 /*===== 经理协议 命令码 =====*/
-#define MGR_CMD_U1_IAP_START    0x0001   /* U1 IAP 起始帧 */
-#define MGR_CMD_U1_IAP_DATA     0x0002   /* U1 IAP 数据帧 */
-#define MGR_CMD_U1_IAP_END      0x0003   /* U1 IAP 结束帧 */
+/* U1/U7 IAP (0x0001-0x0003, 0x0005-0x0007) 已删除, ★ NIY 未实现未使用 */
 #define MGR_CMD_QUERY_U1_VER    0x0004   /* 查询 U1 版本 */
-#define MGR_CMD_U7_IAP_START    0x0005   /* U7 IAP 起始帧 */
-#define MGR_CMD_U7_IAP_DATA     0x0006   /* U7 IAP 数据帧 */
-#define MGR_CMD_U7_IAP_END      0x0007   /* U7 IAP 结束帧 */
 #define MGR_CMD_QUERY_U7_VER    0x0008   /* 查询 U7 版本 */
 #define MGR_CMD_FW_START        0x0009   /* U4 固件 起始帧 (含3B版本号) */
 #define MGR_CMD_FW_DATA         0x000A   /* U4 固件 数据帧 */
@@ -44,11 +39,7 @@ typedef enum {
 #define MGR_CMD_ADC_RESULT      0x0014   /* ADC 测试结果 (治具自发, 16B) */
 #define MGR_CMD_QUERY_ADC       0x0020   /* 查询ADC (统一, Target:1=U1/4=U4/7=U7) */
 #define MGR_CMD_SN_UPLOAD       0x0024   /* U4 SN 码上传 (治具自发, 16B) */
-#define MGR_CMD_FLASH_DUMP      0x0025   /* 诊断: dump 两槽原始数据 (32B) */
-#define MGR_CMD_FLASH_HEAD      0x0026   /* 诊断: Flash_ReadHead 读两槽 (16B) */
-#define MGR_CMD_UART2_DIAG      0x0027   /* 诊断: USART2 SR/CR1/DMA/FIFO (8B) */
-#define MGR_CMD_U4_FLASH_READ   0x0029   /* 诊断: 读回 U4 flash 16B (进bootloader读, 验证烧录) */
-#define MGR_CMD_U4_BOOTSTATE    0x002A   /* 诊断: 检测 U4 是否卡在 bootloader (发0x7F看回0x79, 不改BOOT0/不复位) */
+/* 0x0025/0x0026/0x0027/0x0029/0x002A 诊断命令已删除 (腾 Flash) */
 #define MGR_CMD_U4_SET_PERIOD   0x002B   /* U4 设置报文周期 (转发 0x18, LEN=2 [period_ms 2B 大端]) */
 
 /*===== 治具测试 命令码 (0x011x, 避开经理协议) =====*/

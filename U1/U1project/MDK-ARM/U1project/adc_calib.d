@@ -38,3 +38,4 @@ u1project\adc_calib.o: ../Core/Inc/app_internal.h
 u1project\adc_calib.o: ../Core/Inc/protocol_u7.h
 u1project\adc_calib.o: ../Core/Inc/protocol_u4.h
 u1project\adc_calib.o: ../Core/Inc/bsp_adc.h
+u1project\adc_calib.o: D:\Develop\Keil_MDK\ARM\ARMCC\Bin\..\include\string.h

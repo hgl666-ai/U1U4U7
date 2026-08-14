@@ -424,16 +424,6 @@ int U4_AmsZero(void)
 
 /*===== 兼容旧命令 (自拟, 待 U4 方确认) =====*/
 
-int U4_Ping(void)
-{
-    switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_PING, NULL, 0, 1, 50);
-    case U4_SESS_DONE_OK: return U4_SendCmd_Result();
-    case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
-    default: return U4_PROTO_PENDING;
-    }
-}
-
 int U4_GetVersion(uint8_t *major, uint8_t *minor, uint8_t *revision)
 {
     switch (u4_sess.state) {
@@ -444,26 +434,6 @@ int U4_GetVersion(uint8_t *major, uint8_t *minor, uint8_t *revision)
             if (major)    *major    = u4_sess.rx_buf[0];
             if (minor)    *minor    = u4_sess.rx_buf[1];
             if (revision) *revision = u4_sess.rx_buf[2];
-            return U4_PROTO_OK;
-        }
-        return U4_PROTO_ERR_FRAME;
-    case U4_SESS_DONE_ERR:
-        { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
-    default: return U4_PROTO_PENDING;
-    }
-}
-
-int U4_ReadADC(uint8_t channel, uint16_t *value)
-{
-    switch (u4_sess.state) {
-    case U4_SESS_IDLE: {
-        uint8_t tx[1] = { channel };
-        return U4_SendCmd_Start(U4_CMD_READ_ADC, tx, 1, 3, 100);
-    }
-    case U4_SESS_DONE_OK:
-        u4_sess.state = U4_SESS_IDLE;
-        if (u4_sess.rx_len >= 3 && u4_sess.rx_buf[0] == U4_STATUS_OK) {
-            if (value) *value = ((uint16_t)u4_sess.rx_buf[1] << 8) | u4_sess.rx_buf[2];
             return U4_PROTO_OK;
         }
         return U4_PROTO_ERR_FRAME;
@@ -488,38 +458,4 @@ int U4_ReadAllADC(uint8_t *buf)
         { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
     }
-}
-
-int U4_SelfTest(uint8_t *result)
-{
-    switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_SELF_TEST, NULL, 0, 2, 1000);
-    case U4_SESS_DONE_OK:
-        u4_sess.state = U4_SESS_IDLE;
-        if (u4_sess.rx_len >= 2 && u4_sess.rx_buf[0] == U4_STATUS_OK) {
-            if (result) *result = u4_sess.rx_buf[1];
-            return U4_PROTO_OK;
-        }
-        return U4_PROTO_ERR_FRAME;
-    case U4_SESS_DONE_ERR:
-        { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
-    default: return U4_PROTO_PENDING;
-    }
-}
-
-int U4_Reset(void)
-{
-    if (u4_sess.state != U4_SESS_IDLE &&
-        u4_sess.state != U4_SESS_DONE_OK &&
-        u4_sess.state != U4_SESS_DONE_ERR) {
-        return U4_PROTO_ERR_BUSY;
-    }
-    uint8_t  frame[FRAME_BUF_SIZE_1B];
-    uint16_t seq   = u4_seq;
-    uint16_t f_len = Frame_Build_1B_LE(frame, U4_CMD_RESET, seq, NULL, 0);
-    UART_ClearBuffer(&u4_fifo);
-    UART_SendArray(&huart2, frame, f_len);
-    u4_seq = (seq >= 0xFFFF) ? 0x0001 : (seq + 1);
-    u4_sess.state = U4_SESS_IDLE;
-    return U4_PROTO_OK;
 }

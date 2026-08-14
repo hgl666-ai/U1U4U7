@@ -7,7 +7,7 @@
 #include <string.h>
 
 /*===== 状态 =====
- * 0=idle, 1=等U4, 2=等U7, 3=比对完成
+ * 0=idle, 2=等U7, 3=比对完成 (U4 数据直接取报文流, 无独立等待阶段)
  */
 static uint8_t  adc_consist_phase;
 static uint8_t  adc_consist_buf[3][16];       /* [0]=U1 [1]=U4 [2]=U7, 各 4ch×4B */
@@ -75,13 +75,24 @@ uint8_t ADC_Consistency_Start(uint8_t threshold)
             adc_consist_buf[0][i * 4 + 3] = v.valid ? 1 : 0;
         }
     }
-    /* 清空 U4/U7 buf */
+    /* [2026-08-14] U4 数据改从报文流取 (U4 固件未实现 0x34):
+     *   CH1=vo1, CH2=vo2, CH3=ams_adc; CH4 不在报文流, status=0 待治具完成 */
     memset(adc_consist_buf[1], 0, 16);
+    {
+        const uint16_t vals[3] = { u4_report.vo1, u4_report.vo2, u4_report.ams_adc };
+        for (uint8_t i = 0; i < 3; i++) {
+            adc_consist_buf[1][i * 4 + 0] = (uint8_t)(i + 1);
+            adc_consist_buf[1][i * 4 + 1] = (uint8_t)(vals[i] >> 8);
+            adc_consist_buf[1][i * 4 + 2] = (uint8_t)(vals[i]);
+            adc_consist_buf[1][i * 4 + 3] = 1;
+        }
+        adc_consist_buf[1][3 * 4 + 0] = 4;   /* CH4 不在报文流 */
+    }
     memset(adc_consist_buf[2], 0, 16);
 
-    /* Phase 1: 启 U4 查询 */
-    U4_ReadAllADC(adc_consist_buf[1]);
-    adc_consist_phase    = 1;
+    /* U4 数据已取好, 直接启 U7 查询 (phase 2) */
+    U7_GetADC(adc_consist_buf[2]);
+    adc_consist_phase    = 2;
     adc_consist_deadline = HAL_GetTick() + ADC_CONSISTENCY_TIMEOUT_MS;
     return 0;
 }
@@ -95,32 +106,12 @@ void ADC_Consistency_Run(void)
 {
     if (adc_consist_phase == 0) return;
 
-    /* 超时保护 */
+    /* 超时保护: 等 U7 超时 → 直接比对 (U7 buf 保持全 0) */
     if (HAL_GetTick() > adc_consist_deadline) {
-        /* 当前阶段超时: 对应芯片 buf 保持全 0 (status=0), 跳到下一阶段 */
-        if (adc_consist_phase == 1) {
-            adc_consist_phase = 2;
-            /* 启 U7 */
-            U7_GetADC(adc_consist_buf[2]);
-            adc_consist_deadline = HAL_GetTick() + ADC_CONSISTENCY_TIMEOUT_MS;
-        } else {
-            /* phase 2 超时 → 直接比对 */
-            adc_consist_phase = 3;
-        }
+        adc_consist_phase = 3;
     }
 
-    /*── Phase 1: 等 U4 ──*/
-    if (adc_consist_phase == 1) {
-        int ret = U4_ReadAllADC(adc_consist_buf[1]);
-        if (ret == U4_PROTO_PENDING) return;
-        /* OK 或 ERR 都继续: ERR 时 buf[1] 未填充(保持 0), 判定区该通道 FAIL */
-        U7_GetADC(adc_consist_buf[2]);
-        adc_consist_phase = 2;
-        adc_consist_deadline = HAL_GetTick() + ADC_CONSISTENCY_TIMEOUT_MS;
-        return;
-    }
-
-    /*── Phase 2: 等 U7 ──*/
+    /*── Phase 2: 等 U7 (U4 数据已从报文流取好, 无 Phase 1) ──*/
     if (adc_consist_phase == 2) {
         int ret = U7_GetADC(adc_consist_buf[2]);
         if (ret == U7_PROTO_PENDING) return;

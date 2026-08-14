@@ -213,8 +213,8 @@ I (../Core/Inc/protocol_frame.h)(0x6A7C2F10)
 I (../Core/Inc/bsp_uart.h)(0x6A7BEA1F)
 I (../Core/Inc/usart.h)(0x6A436E48)
 I (D:\Develop\Keil_MDK\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
-F (..\Core\Src\protocol_u4.c)(0x6A7C2F56)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\protocol_u4.o --omf_browse u1project\protocol_u4.crf --depend u1project\protocol_u4.d)
-I (../Core/Inc/protocol_u4.h)(0x6A769B51)
+F (..\Core\Src\protocol_u4.c)(0x6A7D39A5)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\protocol_u4.o --omf_browse u1project\protocol_u4.crf --depend u1project\protocol_u4.d)
+I (../Core/Inc/protocol_u4.h)(0x6A7D3982)
 I (../Core/Inc/main.h)(0x6A5750EE)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6A3F8D5C)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6A4F1760)
@@ -286,8 +286,8 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h)(0x6A3F8D5C)
 I (D:\Develop\Keil_MDK\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
-F (..\Core\Src\app.c)(0x6A7C39A9)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\app.o --omf_browse u1project\app.crf --depend u1project\app.d)
-I (../Core/Inc/app.h)(0x6A7C398F)
+F (..\Core\Src\app.c)(0x6A7D3D13)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\app.o --omf_browse u1project\app.crf --depend u1project\app.d)
+I (../Core/Inc/app.h)(0x6A7D3D2B)
 I (../Core/Inc/main.h)(0x6A5750EE)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6A3F8D5C)
 I (../Core/Inc/stm32f1xx_hal_conf.h)(0x6A4F1760)
@@ -341,7 +341,7 @@ I (../Core/Inc/gd25q128.h)(0x6A75AAB2)
 I (../Core/Inc/spi.h)(0x6A41ECF7)
 I (../Core/Inc/isp_programmer.h)(0x6A70554D)
 I (../Core/Inc/bsp_uart.h)(0x6A7BEA1F)
-I (../Core/Inc/protocol_u4.h)(0x6A769B51)
+I (../Core/Inc/protocol_u4.h)(0x6A7D3982)
 I (../Core/Inc/protocol_u7.h)(0x6A6724DF)
 I (../Core/Inc/bsp_gpio.h)(0x6A588D25)
 I (../Core/Inc/bsp_adc.h)(0x6A588B38)
@@ -380,7 +380,7 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h)(0x6A3F8D5C)
-I (../Core/Inc/app.h)(0x6A7C398F)
+I (../Core/Inc/app.h)(0x6A7D3D2B)
 I (../Core/Inc/isp_programmer.h)(0x6A70554D)
 I (../Core/Inc/bsp_uart.h)(0x6A7BEA1F)
 I (../Core/Inc/protocol_frame.h)(0x6A7C2F10)
@@ -449,8 +449,8 @@ I (../Core/Inc/bsp_uart.h)(0x6A7BEA1F)
 I (../Core/Inc/bsp_gpio.h)(0x6A588D25)
 I (../Core/Inc/bsp_adc.h)(0x6A588B38)
 I (../Core/Inc/protocol_u7.h)(0x6A6724DF)
-I (../Core/Inc/protocol_u4.h)(0x6A769B51)
-I (../Core/Inc/app.h)(0x6A7C398F)
+I (../Core/Inc/protocol_u4.h)(0x6A7D3982)
+I (../Core/Inc/app.h)(0x6A7D3D2B)
 F (../Core/Src/gpio.c)(0x6A588631)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\gpio.o --omf_browse u1project\gpio.crf --depend u1project\gpio.d)
 I (../Core/Inc/gpio.h)(0x6A3F8D62)
 I (../Core/Inc/main.h)(0x6A5750EE)
@@ -688,7 +688,7 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h)(0x6A3F8D5C)
-F (..\Core\Src\adc_calib.c)(0x6A72F5A9)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\adc_calib.o --omf_browse u1project\adc_calib.crf --depend u1project\adc_calib.d)
+F (..\Core\Src\adc_calib.c)(0x6A7E8C39)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\adc_calib.o --omf_browse u1project\adc_calib.crf --depend u1project\adc_calib.d)
 I (../Core/Inc/adc_calib.h)(0x6A705BB3)
 I (../Core/Inc/main.h)(0x6A5750EE)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6A3F8D5C)
@@ -722,12 +722,13 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h)(0x6A3F8D5C)
-I (../Core/Inc/app.h)(0x6A7C398F)
+I (../Core/Inc/app.h)(0x6A7D3D2B)
 I (../Core/Inc/app_internal.h)(0x6A72F532)
 I (../Core/Inc/protocol_u7.h)(0x6A6724DF)
-I (../Core/Inc/protocol_u4.h)(0x6A769B51)
+I (../Core/Inc/protocol_u4.h)(0x6A7D3982)
 I (../Core/Inc/bsp_adc.h)(0x6A588B38)
-F (..\Core\Src\adc_consistency.c)(0x6A705BAC)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\adc_consistency.o --omf_browse u1project\adc_consistency.crf --depend u1project\adc_consistency.d)
+I (D:\Develop\Keil_MDK\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
+F (..\Core\Src\adc_consistency.c)(0x6A7E82E6)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\adc_consistency.o --omf_browse u1project\adc_consistency.crf --depend u1project\adc_consistency.d)
 I (../Core/Inc/adc_consistency.h)(0x6A705BA2)
 I (../Core/Inc/main.h)(0x6A5750EE)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h)(0x6A3F8D5C)
@@ -761,9 +762,9 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h)(0x6A3F8D5C)
-I (../Core/Inc/app.h)(0x6A7C398F)
+I (../Core/Inc/app.h)(0x6A7D3D2B)
 I (../Core/Inc/app_internal.h)(0x6A72F532)
-I (../Core/Inc/protocol_u4.h)(0x6A769B51)
+I (../Core/Inc/protocol_u4.h)(0x6A7D3982)
 I (../Core/Inc/protocol_u7.h)(0x6A6724DF)
 I (../Core/Inc/bsp_adc.h)(0x6A588B38)
 I (D:\Develop\Keil_MDK\ARM\ARMCC\include\string.h)(0x5E8E3CC2)
@@ -801,7 +802,7 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h)(0x6A3F8D5C)
-I (../Core/Inc/app.h)(0x6A7C398F)
+I (../Core/Inc/app.h)(0x6A7D3D2B)
 I (../Core/Inc/protocol_frame.h)(0x6A7C2F10)
 F (..\Core\Src\fw_upload.c)(0x6A798B49)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\fw_upload.o --omf_browse u1project\fw_upload.crf --depend u1project\fw_upload.d)
 I (../Core/Inc/fw_upload.h)(0x6A705B8B)
@@ -837,7 +838,7 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h)(0x6A3F8D5C)
-I (../Core/Inc/app.h)(0x6A7C398F)
+I (../Core/Inc/app.h)(0x6A7D3D2B)
 I (../Core/Inc/app_internal.h)(0x6A72F532)
 I (../Core/Inc/gd25q128.h)(0x6A75AAB2)
 I (../Core/Inc/spi.h)(0x6A41ECF7)
@@ -876,10 +877,10 @@ I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h)(0x6A3F8D5C)
 I (../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h)(0x6A3F8D5C)
-I (../Core/Inc/app.h)(0x6A7C398F)
+I (../Core/Inc/app.h)(0x6A7D3D2B)
 I (../Core/Inc/app_internal.h)(0x6A72F532)
 I (../Core/Inc/protocol_u7.h)(0x6A6724DF)
-I (../Core/Inc/protocol_u4.h)(0x6A769B51)
+I (../Core/Inc/protocol_u4.h)(0x6A7D3982)
 F (../USB_DEVICE/App/usb_device.c)(0x6A3F8D63)(--c99 -c --cpu Cortex-M3 -g -O3 --apcs=interwork --split_sections -I ../Core/Inc -I ../USB_DEVICE/App -I ../USB_DEVICE/Target -I ../Drivers/STM32F1xx_HAL_Driver/Inc -I ../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy -I ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc -I ../Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc -I ../Drivers/CMSIS/Device/ST/STM32F1xx/Include -I ../Drivers/CMSIS/Include-I.\RTE\_U1project-ID:\Develop\Keil_MDK\ARM\PACK\ARM\CMSIS\5.7.0\CMSIS\Core\Include-ID:\Develop\Keil_MDK\ARM\PACK\Keil\STM32F1xx_DFP\2.3.0\Device\Include-D__UVISION_VERSION="534" -D_RTE_ -DSTM32F10X_LD -D_RTE_ -DUSE_HAL_DRIVER -DSTM32F103x6-o u1project\usb_device.o --omf_browse u1project\usb_device.crf --depend u1project\usb_device.d)
 I (../USB_DEVICE/App/usb_device.h)(0x6A3F8D64)
 I (../Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f1xx.h)(0x6A3F8D5C)

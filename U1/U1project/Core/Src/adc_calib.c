@@ -4,6 +4,7 @@
 #include "protocol_u7.h"
 #include "protocol_u4.h"
 #include "bsp_adc.h"
+#include <string.h>
 
 /*===== 状态机 =====
  * Phase: 0=idle, 1=MOVE, 4=WAIT, 2=PROC, 3=DONE
@@ -63,18 +64,17 @@ void ADC_Calib_Run(void)
     /*── Phase 4: 等待电机物理到位 ──*/
     if (adc_calib_phase == 4) {
         if (HAL_GetTick() < adc_calib_deadline) return;
-        /* 到位 → 读本地 U1 ADC (TODO: 恢复为 U4_ReadAllADC) */
-        {
-            static const uint32_t ch[4] = {ADC_CH_ADC0, ADC_CH_ADC1, ADC_CH_ADC2, ADC_CH_ADC3};
-            static const uint8_t  id[4] = {1, 2, 3, 4};
-            for (uint8_t i = 0; i < 4; i++) {
-                ADC_Value_t v = BSP_ADC_ReadChannel(ch[i], 4);
-                adc_calib_adc_buf[i * 4 + 0] = id[i];
-                adc_calib_adc_buf[i * 4 + 1] = (uint8_t)(v.raw >> 8);
-                adc_calib_adc_buf[i * 4 + 2] = (uint8_t)(v.raw & 0xFF);
-                adc_calib_adc_buf[i * 4 + 3] = v.valid ? 1 : 0;
-            }
-        }
+        /* [2026-08-14] 改从 U4 报文流取 CH1/CH2 (U4 固件未实现 0x34):
+         *   CH1=vo1, CH2=vo2; CH3/CH4 本任务不用, 置 0 */
+        memset(adc_calib_adc_buf, 0, 16);
+        adc_calib_adc_buf[0 * 4 + 0] = 1;                          /* CH1 = vo1 */
+        adc_calib_adc_buf[0 * 4 + 1] = (uint8_t)(u4_report.vo1 >> 8);
+        adc_calib_adc_buf[0 * 4 + 2] = (uint8_t)(u4_report.vo1);
+        adc_calib_adc_buf[0 * 4 + 3] = 1;
+        adc_calib_adc_buf[1 * 4 + 0] = 2;                          /* CH2 = vo2 */
+        adc_calib_adc_buf[1 * 4 + 1] = (uint8_t)(u4_report.vo2 >> 8);
+        adc_calib_adc_buf[1 * 4 + 2] = (uint8_t)(u4_report.vo2);
+        adc_calib_adc_buf[1 * 4 + 3] = 1;
         adc_calib_phase = 2;
         return;
     }

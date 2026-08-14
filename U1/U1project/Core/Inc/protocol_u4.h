@@ -20,12 +20,9 @@
 #define U4_CMD_SET_REPORT_PERIOD 0x18  /* 设置报文周期 (2B u16 ms) */
 #define U4_CMD_AMS_ZERO          0x20  /* AMS角度清零 */
 #define U4_CMD_REPORT            0x30  /* 报文 (U4→U1 自发, 22B) */
-#define U4_CMD_PING              0x31  /* 心跳 */
 #define U4_CMD_GET_VERSION       0x50  /* 查询版本 (ACK 3B: [主][次][修订]) */
-#define U4_CMD_READ_ADC          0x33  /* 读单通道 ADC */
-#define U4_CMD_READ_ALL_ADC      0x34  /* 读全部 ADC */
-#define U4_CMD_SELF_TEST         0x35  /* 自检 */
-#define U4_CMD_RESET             0x36  /* 软件复位 */
+#define U4_CMD_READ_ALL_ADC      0x34  /* 读全部 ADC (QUERY_ADC target=4 用) */
+/* 0x33/0x35/0x36 (读单通道ADC/自检/软件复位) 已删除, U4 方未确认且从未使用 */
 
 #define U4_STATUS_OK        0x00
 #define U4_STATUS_ERROR     0xFF
@@ -70,11 +67,7 @@ int U4_FactoryReset(void);
 int U4_SetOffset(uint16_t offset_um);
 int U4_SetReportPeriod(uint16_t period_ms);
 int U4_AmsZero(void);
-int U4_Ping(void);
 int U4_GetVersion(uint8_t *major, uint8_t *minor, uint8_t *revision);
-int U4_ReadADC(uint8_t channel, uint16_t *value);
 int U4_ReadAllADC(uint8_t *buf);   /* buf需16字节, 4通道(ADC1/2/3/AVDD)×4B */
-int U4_SelfTest(uint8_t *result);
-int U4_Reset(void);
 
 #endif
