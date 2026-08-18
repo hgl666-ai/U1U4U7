@@ -7,7 +7,9 @@
 extern UART_HandleTypeDef huart1; /* U7 电机板    (8N1, DMA Byte↔Byte) */
 extern UART_HandleTypeDef huart2; /* U4 待测板烧录 (9E1, DMA HalfWord→Byte) */
 
-#define UART_BUF_SIZE  128
+/* [2026-08-17] UART_BUF_SIZE 128→64: RAM 溢出修复 (F103C6 仅 10KB)。
+ * U4 报文流 ~33B/50ms, 主循环 ms 级消费, 64B 充足; ISP 期间 DMA 停止无写入。 */
+#define UART_BUF_SIZE  64
 #define DMA_BUF_SIZE   256
 
 typedef struct {

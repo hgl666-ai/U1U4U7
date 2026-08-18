@@ -14,10 +14,11 @@
 #define MOTOR_SPEED_FAST  10000   /* 10kHz 高速 */
 #define MOTOR_SPEED_SLOW   2000   /*  2kHz 低速 */
 
-/* 默认微步 1/8 (200×8=1600 脉冲/圈)，可通过 UART 修改 */
+/* 微步 1/16 (200×16=3200 脉冲/圈)，初始化时由 BSP_TMC_SetMicrostep16() 显式配置，
+ * 与 U1 侧 diam_calib.h 的 DIAM_CALIB_STEPS_PER_REV=3200 一致 */
 
 void     BSP_Motor_Init(void);
-void     BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz);
+uint8_t  BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz);  /* 1=已启动 0=拒绝(busy/参数) */
 void     BSP_Motor_Stop(void);
 uint8_t  BSP_Motor_IsBusy(void);
 uint32_t BSP_Motor_GetDone(void);

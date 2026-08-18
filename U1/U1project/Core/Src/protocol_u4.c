@@ -63,9 +63,13 @@ enum {
 typedef struct {
     uint8_t  state;
     uint8_t  cmd;
-    uint8_t  tx_data[U4_MAX_DATA];
+    /* [2026-08-17] 内存优化 (RAM 10KB 溢出修复): tx_data 只在 SEND 状态使用,
+     * rx_buf 只在 WAIT_RESP/DONE 状态使用, 生命周期互斥 → 共用一块, 省 256B */
+    union {
+        uint8_t tx_data[U4_MAX_DATA];
+        uint8_t rx_buf[U4_MAX_DATA + 2];
+    } io;
     uint16_t tx_len;
-    uint8_t  rx_buf[U4_MAX_DATA + 2];
     uint16_t rx_max;
     uint16_t rx_len;
     int      result;
@@ -82,9 +86,11 @@ typedef struct {
 
 static U4_Session u4_sess;
 
-/* 空闲时收报文的独立帧状态机 */
+/* SEND 帧构建 与 报文解析 共用一块缓冲 (状态互斥: SEND/IDLE), 减 .bss [2026-08-17] */
+static uint8_t u4_tmp[FRAME_BUF_SIZE_1B];
+
+/* 空闲时收报文的帧状态: 帧缓冲复用 u4_sess.frame_buf (仅 IDLE 状态下使用, 会话缓冲空闲) */
 static uint8_t  idle_frame_state = S_HDR0;
-static uint8_t  idle_frame_buf[FRAME_BUF_SIZE_1B];
 static uint16_t idle_frame_pos   = 0;
 static uint16_t idle_frame_dlen  = 0;
 
@@ -96,7 +102,7 @@ static void U4_ScanReport(void)
     if (u4_scan_pause) return;   /* ISP 期间暂停, 避免吃掉 ISP 响应 */
     uint8_t byte;
     while (UART_ReadByte(&u4_fifo, &byte)) {
-        uint8_t *fb = idle_frame_buf;
+        uint8_t *fb = u4_sess.frame_buf;   /* 复用会话帧缓冲 (IDLE 状态空闲) */
         uint16_t *fp = &idle_frame_pos;
 
         switch (idle_frame_state) {
@@ -129,10 +135,10 @@ static void U4_ScanReport(void)
         case S_CRC_H: {
             fb[(*fp)++] = byte;
             uint8_t  rx_cmd;
-            uint8_t  data[U4_MAX_DATA]; uint16_t dlen;
-            if (Frame_Parse_1B_LE(fb, *fp, &rx_cmd, NULL, data, &dlen)) {
+            uint16_t dlen;
+            if (Frame_Parse_1B_LE(fb, *fp, &rx_cmd, NULL, u4_tmp, &dlen)) {
                 if (rx_cmd == U4_CMD_REPORT) {
-                    U4_ParseReport(data, dlen);
+                    U4_ParseReport(u4_tmp, dlen);
                 }
                 /* 非 0x30 的帧丢弃 */
             }
@@ -188,18 +194,18 @@ void U4_Proto_Run(void)
 
     /*── SEND ──*/
     if (u4_sess.state == U4_SESS_SEND) {
-        uint8_t  frame[FRAME_BUF_SIZE_1B];
+        /* 帧构建复用 u4_tmp (与 IDLE 报文解析互斥) */
         uint16_t frame_len;
 
         if (u4_sess.tx_len > 0)
-            frame_len = Frame_Build_1B_LE(frame, u4_sess.cmd, u4_seq,
-                                       u4_sess.tx_data, u4_sess.tx_len);
+            frame_len = Frame_Build_1B_LE(u4_tmp, u4_sess.cmd, u4_seq,
+                                       u4_sess.io.tx_data, u4_sess.tx_len);
         else
-            frame_len = Frame_Build_1B_LE(frame, u4_sess.cmd, u4_seq,
+            frame_len = Frame_Build_1B_LE(u4_tmp, u4_sess.cmd, u4_seq,
                                        NULL, 0);
 
         UART_ClearBuffer(&u4_fifo);
-        UART_SendArray(&huart2, frame, frame_len);
+        UART_SendArray(&huart2, u4_tmp, frame_len);
 
         u4_sess.deadline    = HAL_GetTick() + u4_sess.timeout_ms;
         u4_sess.frame_state = S_HDR0;
@@ -261,14 +267,14 @@ void U4_Proto_Run(void)
                 uint8_t  rx_cmd;
                 uint16_t rx_len;
                 if (Frame_Parse_1B_LE(fb, *fp, &rx_cmd, NULL,
-                                   u4_sess.rx_buf, &rx_len)) {
+                                   u4_sess.io.rx_buf, &rx_len)) {
                     if (rx_cmd == u4_sess.cmd) {
                         u4_sess.rx_len = rx_len;
                         u4_sess.result = U4_PROTO_OK;
                         u4_sess.state  = U4_SESS_DONE_OK;
                     } else if (rx_cmd == U4_CMD_REPORT) {
                         /* 等待过程中收到报文: 解析并继续等 */
-                        U4_ParseReport(u4_sess.rx_buf, rx_len);
+                        U4_ParseReport(u4_sess.io.rx_buf, rx_len);
                         *fp = 0; u4_sess.frame_state = S_HDR0;
                         break;  /* 不退出，继续收 */
                     } else {
@@ -289,14 +295,16 @@ void U4_Proto_Run(void)
     }
 }
 
-/*===== 便捷函数 (可重入) =====*/
+/*===== 便捷函数 =====
+ * 注意: 全部便捷函数共享单一 u4_sess, 非可重入!
+ * 同一时刻只允许一个命令发起方; 他人调用会消费掉当前会话的结果 (详见审查报告 M1) */
 
 static int U4_SendCmd_Start(uint8_t cmd, uint8_t *tx, uint16_t tx_len,
                              uint16_t rx_max, uint32_t timeout_ms)
 {
     u4_sess.cmd        = cmd;
     u4_sess.tx_len     = tx_len;
-    if (tx_len > 0) memcpy(u4_sess.tx_data, tx, tx_len);
+    if (tx_len > 0) memcpy(u4_sess.io.tx_data, tx, tx_len);
     u4_sess.rx_max     = rx_max;
     u4_sess.timeout_ms = timeout_ms;
     u4_sess.max_retry  = U4_RETRY_MAX;
@@ -308,18 +316,20 @@ static int U4_SendCmd_Start(uint8_t cmd, uint8_t *tx, uint16_t tx_len,
 static int U4_SendCmd_Result(void)
 {
     u4_sess.state = U4_SESS_IDLE;
-    /* 空 ACK (rx_max==0 且 rx_len==0): 校准类命令仅有帧头+CRC, 合法 */
-    if (u4_sess.rx_max == 0 && u4_sess.rx_len == 0)
+    /* [2026-08-17] M4 修复: 空 ACK (rx_len==0) 仍为合法成功;
+     * 带 1 字节状态时: 0=OK, 非0=设备错误码。
+     * (此前这类命令 rx_max=0, 设备回错误状态帧会在 LEN 检查处被丢弃, 误报 TIMEOUT) */
+    if (u4_sess.rx_len == 0)
         return U4_PROTO_OK;
-    if (u4_sess.rx_len >= 1 && u4_sess.rx_buf[0] == U4_STATUS_OK)
+    if (u4_sess.io.rx_buf[0] == U4_STATUS_OK)
         return U4_PROTO_OK;
-    return U4_PROTO_ERR_FRAME;
+    return U4_PROTO_ERR_DEVICE;
 }
 
 int U4_ZeroSensor(void)
 {
     switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_ZERO_SENSOR, NULL, 0, 0, 200);
+    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_ZERO_SENSOR, NULL, 0, 1, 200);
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
@@ -329,7 +339,7 @@ int U4_ZeroSensor(void)
 int U4_StartCalib(void)
 {
     switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_START_CALIB, NULL, 0, 0, 200);
+    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_START_CALIB, NULL, 0, 1, 200);
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
@@ -339,7 +349,7 @@ int U4_StartCalib(void)
 int U4_FinishCalib(void)
 {
     switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_FINISH_CALIB, NULL, 0, 0, 200);
+    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_FINISH_CALIB, NULL, 0, 1, 200);
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
@@ -349,7 +359,7 @@ int U4_FinishCalib(void)
 int U4_CancelCalib(void)
 {
     switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_CANCEL_CALIB, NULL, 0, 0, 200);
+    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_CANCEL_CALIB, NULL, 0, 1, 200);
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
@@ -359,7 +369,7 @@ int U4_CancelCalib(void)
 int U4_ReadFlashParam(void)
 {
     switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_READ_FLASH_PARAM, NULL, 0, 0, 200);
+    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_READ_FLASH_PARAM, NULL, 0, 1, 200);
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
@@ -369,7 +379,7 @@ int U4_ReadFlashParam(void)
 int U4_SaveFlashParam(void)
 {
     switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_SAVE_FLASH_PARAM, NULL, 0, 0, 200);
+    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_SAVE_FLASH_PARAM, NULL, 0, 1, 200);
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
@@ -379,7 +389,7 @@ int U4_SaveFlashParam(void)
 int U4_FactoryReset(void)
 {
     switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_FACTORY_RESET, NULL, 0, 0, 200);
+    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_FACTORY_RESET, NULL, 0, 1, 200);
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
@@ -391,7 +401,11 @@ int U4_SetOffset(uint16_t offset_um)
     switch (u4_sess.state) {
     case U4_SESS_IDLE: {
         uint8_t tx[2] = { (uint8_t)(offset_um >> 8), (uint8_t)(offset_um) };
-        return U4_SendCmd_Start(U4_CMD_SET_OFFSET, tx, 2, 0, 200);
+        /* [2026-08-18] 带数据命令禁重试: io.tx_data 与 io.rx_buf 共用内存,
+         * 重试时 tx 可能已被收到的响应字节覆盖 → 重发帧内容错误 */
+        int r = U4_SendCmd_Start(U4_CMD_SET_OFFSET, tx, 2, 1, 200);
+        u4_sess.max_retry = 1;
+        return r;
     }
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
@@ -404,7 +418,10 @@ int U4_SetReportPeriod(uint16_t period_ms)
     switch (u4_sess.state) {
     case U4_SESS_IDLE: {
         uint8_t tx[2] = { (uint8_t)(period_ms >> 8), (uint8_t)(period_ms) };
-        return U4_SendCmd_Start(U4_CMD_SET_REPORT_PERIOD, tx, 2, 0, 200);
+        /* [2026-08-18] 同上: 带数据命令禁重试 */
+        int r = U4_SendCmd_Start(U4_CMD_SET_REPORT_PERIOD, tx, 2, 1, 200);
+        u4_sess.max_retry = 1;
+        return r;
     }
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
@@ -415,7 +432,7 @@ int U4_SetReportPeriod(uint16_t period_ms)
 int U4_AmsZero(void)
 {
     switch (u4_sess.state) {
-    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_AMS_ZERO, NULL, 0, 0, 200);
+    case U4_SESS_IDLE: return U4_SendCmd_Start(U4_CMD_AMS_ZERO, NULL, 0, 1, 200);
     case U4_SESS_DONE_OK: return U4_SendCmd_Result();
     case U4_SESS_DONE_ERR: { int r = u4_sess.result; u4_sess.state = U4_SESS_IDLE; return r; }
     default: return U4_PROTO_PENDING;
@@ -431,9 +448,9 @@ int U4_GetVersion(uint8_t *major, uint8_t *minor, uint8_t *revision)
     case U4_SESS_DONE_OK:
         u4_sess.state = U4_SESS_IDLE;
         if (u4_sess.rx_len >= 3) {
-            if (major)    *major    = u4_sess.rx_buf[0];
-            if (minor)    *minor    = u4_sess.rx_buf[1];
-            if (revision) *revision = u4_sess.rx_buf[2];
+            if (major)    *major    = u4_sess.io.rx_buf[0];
+            if (minor)    *minor    = u4_sess.io.rx_buf[1];
+            if (revision) *revision = u4_sess.io.rx_buf[2];
             return U4_PROTO_OK;
         }
         return U4_PROTO_ERR_FRAME;
@@ -450,7 +467,7 @@ int U4_ReadAllADC(uint8_t *buf)
     case U4_SESS_DONE_OK:
         u4_sess.state = U4_SESS_IDLE;
         if (u4_sess.rx_len >= 16) {
-            if (buf) memcpy(buf, u4_sess.rx_buf, 16);
+            if (buf) memcpy(buf, u4_sess.io.rx_buf, 16);
             return U4_PROTO_OK;
         }
         return U4_PROTO_ERR_FRAME;

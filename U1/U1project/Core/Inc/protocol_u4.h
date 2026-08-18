@@ -19,7 +19,7 @@
 #define U4_CMD_SET_OFFSET        0x17  /* 设置偏移值 (2B u16 um) */
 #define U4_CMD_SET_REPORT_PERIOD 0x18  /* 设置报文周期 (2B u16 ms) */
 #define U4_CMD_AMS_ZERO          0x20  /* AMS角度清零 */
-#define U4_CMD_REPORT            0x30  /* 报文 (U4→U1 自发, 22B) */
+#define U4_CMD_REPORT            0x30  /* 报文 (U4→U1 自发, 24B ccd_data_t) */
 #define U4_CMD_GET_VERSION       0x50  /* 查询版本 (ACK 3B: [主][次][修订]) */
 #define U4_CMD_READ_ALL_ADC      0x34  /* 读全部 ADC (QUERY_ADC target=4 用) */
 /* 0x33/0x35/0x36 (读单通道ADC/自检/软件复位) 已删除, U4 方未确认且从未使用 */
@@ -33,6 +33,7 @@
 #define U4_PROTO_ERR_FRAME     -2
 #define U4_PROTO_ERR_CHKSUM    -3
 #define U4_PROTO_ERR_BUSY      -4
+#define U4_PROTO_ERR_DEVICE    -5   /* 设备已应答, 但返回非 0 状态字节 [2026-08-17] */
 
 /*===== 报文数据结构 (U4→U1, CMD 0x30) =====*/
 typedef struct {

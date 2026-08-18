@@ -105,6 +105,7 @@ int main(void)
   USART1->CR1 |= USART_CR1_RE;
   BSP_ADC_Init();
 
+#ifdef U7_DEBUG
   /* 诊断: 发送 USART1 寄存器值 */
   {
       uint16_t cr1 = USART1->CR1, sr = USART1->SR;
@@ -139,10 +140,20 @@ int main(void)
       USART1->DR = '\r'; while(!(USART1->SR&USART_SR_TC));
       USART1->DR = '\n'; while(!(USART1->SR&USART_SR_TC));
   }
+#endif /* U7_DEBUG */
 
-  //BSP_Motor_Init();
-  //USART1->DR = BSP_Motor_Test();
-  //while (!(USART1->SR & USART_SR_TC));
+  /* [2026-08-17] M6 修复: 恢复电机/TMC2209 初始化 (此前被注释, TMC 靠上电默认值运行,
+   * 细分不确定; 此处按备份版本恢复: 检测到 TMC 在线则显式配置 16 细分等参数)
+   * [2026-08-18] 排障开关: 若怀疑 TMC 初始化导致 U7 异常, 定义 U7_SKIP_TMC_CFG
+   * 可跳过 (电机退化为 TMC 上电默认配置) */
+#ifndef U7_SKIP_TMC_CFG
+  BSP_TMC_Init();
+  if (BSP_TMC_IsAlive()) {
+      BSP_TMC_SetDefaults();   /* GCONF/IHOLD_IRUN/CHOPCONF(mres=4→16细分)/PWMCONF */
+  }
+#endif /* U7_SKIP_TMC_CFG */
+  BSP_Motor_Init();
+
   PROTO_Init();
   while (1) {
     PROTO_Run();

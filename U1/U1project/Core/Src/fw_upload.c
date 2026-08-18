@@ -185,9 +185,7 @@ uint8_t FwUpload_Handle(uint16_t cmd, uint8_t *data, uint16_t len)
                 resp = APP_STATUS_ERR_FLASH;
         }
 
-        /* 切到下一个槽, 为第二次上传做准备
-         * [单槽变通] upload_slot 不再影响 base, 此切换保留无害;
-         * 恢复双槽后放开即可 */
+        /* 切到下一个槽, 为第二次上传做准备 (双槽: slot0→slot1→slot0 交替) */
         upload_slot = (upload_slot == 0) ? 1 : 0;
 
         app_state = APP_STATE_IDLE;

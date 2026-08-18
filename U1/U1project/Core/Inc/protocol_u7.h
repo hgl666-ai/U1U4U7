@@ -15,8 +15,8 @@
 #define U7_CMD_MOTOR_STOP   0x24
 #define U7_CMD_READ_INPUT   0x25
 #define U7_CMD_SELF_TEST    0x26
-#define U7_CMD_GET_ADC      0x28
 #define U7_CMD_RESET        0x27
+#define U7_CMD_GET_ADC      0x28
 
 #define U7_MOTOR_CW         0x00
 #define U7_MOTOR_CCW        0x01

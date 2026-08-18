@@ -32,14 +32,17 @@ void BSP_Motor_Init(void)
 /**
   * @brief  启动电机步进运动
   * @param  dir:     MOTOR_DIR_CW(0) / MOTOR_DIR_CCW(1)
-  * @param  steps:   步数 (微步单位，当前默认 1/8 微步 = 1600 脉冲/圈)
+  * @param  steps:   步数 (微步单位，1/16 微步 = 3200 脉冲/圈,
+  *                  由 BSP_TMC_SetMicrostep16() 在初始化时显式配置)
   * @param  freq_hz: 脉冲频率 (Hz)，实际值 = 32MHz / (ARR+1)
   * @note   非阻塞，调用后立即返回，由 ISR 计步并在到达目标后自动停机
+  * @retval 1=已启动, 0=被拒绝 (参数无效或电机运动中)
+  *         [2026-08-17] M7: 增加返回值, 运动中拒绝必须让上层知晓并回错误
   */
-void BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
+uint8_t BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
 {
-    if (steps == 0 || freq_hz == 0) return;
-    if (motor_busy) return;              /* 运动中，忽略新指令 */
+    if (steps == 0 || freq_hz == 0) return 0;
+    if (motor_busy) return 0;            /* 运动中，拒绝新指令 */
 
     uint32_t arr = TIM3_CLK_HZ / freq_hz;
     if (arr < 1)   arr = 1;
@@ -63,6 +66,7 @@ void BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
     GPIOA->BRR = GPIO_PIN_5;             /* 直接寄存器确保拉低 PA5 */
     HAL_TIM_PWM_Start_IT(&htim3, TIM_CHANNEL_2);
     TIM3->DIER |= TIM_DIER_UIE;          /* 补设更新中断 (HAL有时漏掉) */
+    return 1;
 }
 
 /**

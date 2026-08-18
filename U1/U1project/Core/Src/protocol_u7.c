@@ -28,9 +28,13 @@ enum {
 typedef struct {
     uint8_t  state;
     uint8_t  cmd;                       /* 1 字节命令码 */
-    uint8_t  tx_data[U7_MAX_DATA];
+    /* [2026-08-17] 内存优化 (RAM 10KB 溢出修复): tx_data 与 rx_buf 生命周期互斥,
+     * 共用一块, 省 256B */
+    union {
+        uint8_t tx_data[U7_MAX_DATA];
+        uint8_t rx_buf[U7_MAX_DATA + 2];
+    } io;
     uint16_t tx_len;
-    uint8_t  rx_buf[U7_MAX_DATA + 2];
     uint16_t rx_max;
     uint16_t rx_len;
     int      result;
@@ -72,18 +76,19 @@ void U7_Proto_Run(void)
 
     /*── SEND ──*/
     if (u7_sess.state == U7_SESS_SEND) {
-        uint8_t  frame[FRAME_BUF_SIZE_1B];
+        /* [2026-08-17] 内存优化: 复用 u7_sess.frame_buf 构建发送帧
+         * (SEND 状态帧缓冲空闲; 发送为阻塞式, 完成后才进入 WAIT_RESP 收帧), 省 265B */
         uint16_t frame_len;
 
         if (u7_sess.tx_len > 0)
-            frame_len = Frame_Build_1B(frame, u7_sess.cmd, u7_seq,
-                                       u7_sess.tx_data, u7_sess.tx_len);
+            frame_len = Frame_Build_1B(u7_sess.frame_buf, u7_sess.cmd, u7_seq,
+                                       u7_sess.io.tx_data, u7_sess.tx_len);
         else
-            frame_len = Frame_Build_1B(frame, u7_sess.cmd, u7_seq,
+            frame_len = Frame_Build_1B(u7_sess.frame_buf, u7_sess.cmd, u7_seq,
                                        NULL, 0);
 
         UART_ClearBuffer(&u7_fifo);
-        UART_SendArray(&huart1, frame, frame_len);
+        UART_SendArray(&huart1, u7_sess.frame_buf, frame_len);
 
         u7_sess.deadline    = HAL_GetTick() + u7_sess.timeout_ms;
         u7_sess.frame_state = S_HDR0;
@@ -146,7 +151,7 @@ void U7_Proto_Run(void)
                 uint8_t  rx_cmd;
                 uint16_t rx_len;
                 if (Frame_Parse_1B(fb, *fp, &rx_cmd, NULL,
-                                   u7_sess.rx_buf, &rx_len)) {
+                                   u7_sess.io.rx_buf, &rx_len)) {
                     if (rx_cmd == u7_sess.cmd) {
                         u7_sess.rx_len = rx_len;
                         u7_sess.result = U7_PROTO_OK;
@@ -166,14 +171,16 @@ void U7_Proto_Run(void)
     }
 }
 
-/*===== 便捷函数 (可重入) =====*/
+/*===== 便捷函数 =====
+ * 注意: 全部便捷函数共享单一 u7_sess, 非可重入!
+ * 同一时刻只允许一个命令发起方; 他人调用会消费掉当前会话的结果 (详见审查报告 M1) */
 
 static int U7_SendCmd_Start(uint8_t cmd, uint8_t *tx, uint16_t tx_len,
                              uint16_t rx_max, uint32_t timeout_ms)
 {
     u7_sess.cmd        = cmd;
     u7_sess.tx_len     = tx_len;
-    if (tx_len > 0) memcpy(u7_sess.tx_data, tx, tx_len);
+    if (tx_len > 0) memcpy(u7_sess.io.tx_data, tx, tx_len);
     u7_sess.rx_max     = rx_max;
     u7_sess.timeout_ms = timeout_ms;
     u7_sess.max_retry  = U7_RETRY_MAX;
@@ -185,7 +192,7 @@ static int U7_SendCmd_Start(uint8_t cmd, uint8_t *tx, uint16_t tx_len,
 static int U7_SendCmd_Result(void)
 {
     u7_sess.state = U7_SESS_IDLE;
-    if (u7_sess.rx_len >= 1 && u7_sess.rx_buf[0] == U7_STATUS_OK)
+    if (u7_sess.rx_len >= 1 && u7_sess.io.rx_buf[0] == U7_STATUS_OK)
         return U7_PROTO_OK;
     return U7_PROTO_ERR_FRAME;
 }
@@ -206,9 +213,9 @@ int U7_GetVersion(uint8_t *major, uint8_t *minor)
     case U7_SESS_IDLE: return U7_SendCmd_Start(U7_CMD_GET_VERSION, NULL, 0, 3, 50);
     case U7_SESS_DONE_OK:
         u7_sess.state = U7_SESS_IDLE;
-        if (u7_sess.rx_len >= 3 && u7_sess.rx_buf[0] == U7_STATUS_OK) {
-            if (major) *major = u7_sess.rx_buf[1];
-            if (minor) *minor = u7_sess.rx_buf[2];
+        if (u7_sess.rx_len >= 3 && u7_sess.io.rx_buf[0] == U7_STATUS_OK) {
+            if (major) *major = u7_sess.io.rx_buf[1];
+            if (minor) *minor = u7_sess.io.rx_buf[2];
             return U7_PROTO_OK;
         }
         return U7_PROTO_ERR_FRAME;
@@ -223,7 +230,11 @@ int U7_MotorStep(uint8_t motor, uint8_t direction, uint16_t steps)
     switch (u7_sess.state) {
     case U7_SESS_IDLE: {
         uint8_t tx[4] = { motor, direction, (uint8_t)(steps >> 8), (uint8_t)steps };
-        return U7_SendCmd_Start(U7_CMD_MOTOR_STEP, tx, 4, 1, 5000);
+        int r = U7_SendCmd_Start(U7_CMD_MOTOR_STEP, tx, 4, 1, 5000);
+        /* [2026-08-17] M7 修复: 运动命令非幂等 — 帧丢失后自动重发会让电机多走一遍,
+         * 禁止重试 (max_retry=1 即只发一次), 失败由上层报错而非重复动作 */
+        u7_sess.max_retry = 1;
+        return r;
     }
     case U7_SESS_DONE_OK: return U7_SendCmd_Result();
     case U7_SESS_DONE_ERR: { int r = u7_sess.result; u7_sess.state = U7_SESS_IDLE; return r; }
@@ -236,7 +247,11 @@ int U7_MotorStop(uint8_t motor)
     switch (u7_sess.state) {
     case U7_SESS_IDLE: {
         uint8_t tx[1] = { motor };
-        return U7_SendCmd_Start(U7_CMD_MOTOR_STOP, tx, 1, 1, 100);
+        /* [2026-08-18] 带数据命令禁重试: io.tx_data 与 io.rx_buf 共用内存,
+         * 重试时 tx 可能已被响应字节覆盖 → 重发帧内容错误 */
+        int r = U7_SendCmd_Start(U7_CMD_MOTOR_STOP, tx, 1, 1, 100);
+        u7_sess.max_retry = 1;
+        return r;
     }
     case U7_SESS_DONE_OK: return U7_SendCmd_Result();
     case U7_SESS_DONE_ERR: { int r = u7_sess.result; u7_sess.state = U7_SESS_IDLE; return r; }
@@ -249,12 +264,15 @@ int U7_ReadInput(uint8_t index, uint8_t *level)
     switch (u7_sess.state) {
     case U7_SESS_IDLE: {
         uint8_t tx[1] = { index };
-        return U7_SendCmd_Start(U7_CMD_READ_INPUT, tx, 1, 2, 50);
+        /* [2026-08-18] 同上: 带数据命令禁重试 */
+        int r = U7_SendCmd_Start(U7_CMD_READ_INPUT, tx, 1, 2, 50);
+        u7_sess.max_retry = 1;
+        return r;
     }
     case U7_SESS_DONE_OK:
         u7_sess.state = U7_SESS_IDLE;
-        if (u7_sess.rx_len >= 2 && u7_sess.rx_buf[0] == U7_STATUS_OK) {
-            if (level) *level = u7_sess.rx_buf[1];
+        if (u7_sess.rx_len >= 2 && u7_sess.io.rx_buf[0] == U7_STATUS_OK) {
+            if (level) *level = u7_sess.io.rx_buf[1];
             return U7_PROTO_OK;
         }
         return U7_PROTO_ERR_FRAME;
@@ -270,8 +288,8 @@ int U7_SelfTest(uint8_t *result)
     case U7_SESS_IDLE: return U7_SendCmd_Start(U7_CMD_SELF_TEST, NULL, 0, 2, 1000);
     case U7_SESS_DONE_OK:
         u7_sess.state = U7_SESS_IDLE;
-        if (u7_sess.rx_len >= 2 && u7_sess.rx_buf[0] == U7_STATUS_OK) {
-            if (result) *result = u7_sess.rx_buf[1];
+        if (u7_sess.rx_len >= 2 && u7_sess.io.rx_buf[0] == U7_STATUS_OK) {
+            if (result) *result = u7_sess.io.rx_buf[1];
             return U7_PROTO_OK;
         }
         return U7_PROTO_ERR_FRAME;
@@ -288,11 +306,11 @@ int U7_Reset(void)
         u7_sess.state != U7_SESS_DONE_ERR) {
         return U7_PROTO_ERR_BUSY;
     }
-    uint8_t  frame[FRAME_BUF_SIZE_1B];
+    /* 复用会话帧缓冲 (本函数仅在会话空闲/结果就绪时执行, 缓冲空闲) */
     uint16_t seq   = u7_seq;
-    uint16_t f_len = Frame_Build_1B(frame, U7_CMD_RESET, seq, NULL, 0);
+    uint16_t f_len = Frame_Build_1B(u7_sess.frame_buf, U7_CMD_RESET, seq, NULL, 0);
     UART_ClearBuffer(&u7_fifo);
-    UART_SendArray(&huart1, frame, f_len);
+    UART_SendArray(&huart1, u7_sess.frame_buf, f_len);
     u7_seq = (seq >= 0xFFFF) ? 0x0001 : (seq + 1);
     u7_sess.state = U7_SESS_IDLE;
     return U7_PROTO_OK;
@@ -305,7 +323,7 @@ int U7_GetADC(uint8_t *buf)
     case U7_SESS_DONE_OK:
         u7_sess.state = U7_SESS_IDLE;
         if (u7_sess.rx_len >= 16) {
-            if (buf) memcpy(buf, u7_sess.rx_buf, 16);
+            if (buf) memcpy(buf, u7_sess.io.rx_buf, 16);
             return U7_PROTO_OK;
         }
         return U7_PROTO_ERR_FRAME;

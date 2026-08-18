@@ -20,21 +20,25 @@ static uint16_t rx_pos  = 0;
 static uint16_t rx_dlen = 0;
 static uint16_t req_seq = 0;
 
+/* 收帧数据 与 响应构建 共用一块缓冲 (解析完成后 handler 用其构造响应, 减 .bss) [2026-08-17] */
+static uint8_t u7_tmp[FRAME_BUF_SIZE_1B];
+
 /*===== 发送响应 =====*/
 
 static void SendResponse(uint8_t cmd, uint8_t *data, uint16_t len)
 {
-    uint8_t buf[FRAME_BUF_SIZE_1B];
-    uint16_t total = Frame_Build_1B(buf, cmd, req_seq, data, len);
-    UART_SendArray(&huart1, buf, total);
+    uint16_t total = Frame_Build_1B(u7_tmp, cmd, req_seq, data, len);
+    UART_SendArray(&huart1, u7_tmp, total);
 }
 
 /*===== 命令处理 =====*/
 
 static void HandlePing(void)
 {
+#ifdef U7_DEBUG
     while (!(USART1->SR & USART_SR_TXE));
     USART1->DR = 'P';  /* PING被调, COM4可见 */
+#endif
     uint8_t resp = PROTO_STATUS_OK;
     SendResponse(PROTO_CMD_PING, &resp, 1);
 }
@@ -58,7 +62,12 @@ static void HandleMotorStep(uint8_t *data, uint16_t len)
         uint8_t e = PROTO_STATUS_ERROR;
         SendResponse(PROTO_CMD_MOTOR_STEP, &e, 1); return;
     }
-    BSP_Motor_Move(dir, steps, MOTOR_SPEED_SLOW);
+    /* [2026-08-17] M7 修复: 电机运动中拒绝新指令时必须回错误,
+     * 此前忽略指令却回 OK, U1 会误以为已执行 (开环定位累积误差) */
+    if (!BSP_Motor_Move(dir, steps, MOTOR_SPEED_SLOW)) {
+        uint8_t e = PROTO_STATUS_ERROR;
+        SendResponse(PROTO_CMD_MOTOR_STEP, &e, 1); return;
+    }
     uint8_t ok = PROTO_STATUS_OK;
     SendResponse(PROTO_CMD_MOTOR_STEP, &ok, 1);
 }
@@ -98,7 +107,9 @@ static void HandleSelfTest(void)
 
 static void HandleGetADC(void)
 {
+#ifdef U7_DEBUG
     USART1->DR = 'G'; while(!(USART1->SR&USART_SR_TC)); /* 看到G说明Handler被调了 */
+#endif
     static const uint32_t ch[4] = {ADC_CH_ADC0, ADC_CH_ADC1, ADC_CH_ADC4, ADC_CH_ADC5};
     static const uint8_t  id[4] = {1, 2, 3, 4};
     uint8_t buf[16];
@@ -181,17 +192,21 @@ void PROTO_Run(void)
             rx_buf[rx_pos++] = byte;
             {
                 uint8_t  cmd; uint16_t seq;
-                uint8_t  data[PROTO_MAX_DATA]; uint16_t len;
-                if (Frame_Parse_1B(rx_buf, rx_pos, &cmd, &seq, data, &len)) {
+                uint16_t len;
+                if (Frame_Parse_1B(rx_buf, rx_pos, &cmd, &seq, u7_tmp, &len)) {
                     req_seq = seq;
+#ifdef U7_DEBUG
                     while (!(USART1->SR & USART_SR_TXE));
                     USART1->DR = 'P';
                     while (!(USART1->SR & USART_SR_TC)); /* 确保P发完 */
-                    Dispatch(cmd, data, len);
+#endif
+                    Dispatch(cmd, u7_tmp, len);
                 } else {
+#ifdef U7_DEBUG
                     while (!(USART1->SR & USART_SR_TXE));
                     USART1->DR = 'F';
                     while (!(USART1->SR & USART_SR_TC));
+#endif
                 }
             }
             rx_pos = 0; rx_state = S_HDR0;

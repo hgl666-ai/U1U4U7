@@ -86,6 +86,12 @@ void DiamCalib_Run(void)
 
         int ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, U7_MOTOR_CW, steps);
         if (ret == U7_PROTO_PENDING) return;  /* 电机会话进行中 */
+        /* [2026-08-17] M2 修复: 电机指令失败 → 直接汇总 (结果已按全 FAIL 初始化),
+         * 避免电机未动却按"已到位"继续读数 */
+        if (ret != U7_PROTO_OK) {
+            dc_phase = DC_DONE;
+            return;
+        }
 
         /* 指令已发出, 等物理到位 */
         mv_deadline = HAL_GetTick() + DIAM_CALIB_MOTOR_DELAY_MS;
