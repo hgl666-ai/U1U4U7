@@ -45,9 +45,6 @@ uint8_t ADC_Calib_IsBusy(void)
     return adc_calib_phase != 0;
 }
 
-/*
-归零-》开始校准命令-》电机来回动3MM-》完成校准命令-》延迟——》读取最大最小值
-*/
 void ADC_Calib_Run(void)
 {
     if (adc_calib_phase == 0) return;
@@ -58,15 +55,6 @@ void ADC_Calib_Run(void)
                                adc_calib_dir ? U7_MOTOR_CCW : U7_MOTOR_CW,
                                ADC_CALIB_STEPS_PER_READ);
         if (ret == U7_PROTO_PENDING) return;
-        /* [2026-08-17] M2 修复: 电机指令失败必须中止, 否则电机未动照样采样,
-         * 最终上报失真的"成功"极值 */
-        if (ret != U7_PROTO_OK) {
-            /* 失败即中止, 通过 ACK 错误码上报 (诊断串已删, 省 Flash ~44B) */
-            uint8_t e = APP_STATUS_ERR_TEST;
-            APP_SendAck(MGR_CMD_ADC_CALIB, &e, 1);
-            adc_calib_phase = 0;
-            return;
-        }
         /* U7 已收到指令, 等电机物理到位 */
         adc_calib_deadline = HAL_GetTick() + ADC_CALIB_MOTOR_DELAY_MS;
         adc_calib_phase = 4;

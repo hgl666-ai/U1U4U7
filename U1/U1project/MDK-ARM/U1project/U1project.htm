@@ -3,9 +3,9 @@
 <title>Static Call Graph - [U1project\U1project.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image U1project\U1project.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Tue Aug 18 16:11:21 2026
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Thu Aug 20 10:53:23 2026
 <BR><P>
-<H3>Maximum Stack Usage =        776 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
+<H3>Maximum Stack Usage =       1032 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
 __rt_entry_main &rArr; main &rArr; APP_Run &rArr; APP_ProgramStep &rArr; SN_Report_OnProgram &rArr; ISP_ReadMemory &rArr; ISP_WaitForACK &rArr; HAL_UART_Receive &rArr; UART_WaitOnFlagUntilTimeout
 <P>
@@ -221,7 +221,7 @@ Global Symbols
 <P><STRONG><a name="[190]"></a>__rt_entry_postsh_1</STRONG> (Thumb, 0 bytes, Stack size unknown bytes, __rtentry2.o(.ARM.Collect$$rtentry$$00000009))
 
 <P><STRONG><a name="[56]"></a>__rt_entry_main</STRONG> (Thumb, 0 bytes, Stack size unknown bytes, __rtentry2.o(.ARM.Collect$$rtentry$$0000000D))
-<BR><BR>[Stack]<UL><LI>Max Depth = 776 + Unknown Stack Size
+<BR><BR>[Stack]<UL><LI>Max Depth = 1032 + Unknown Stack Size
 <LI>Call Chain = __rt_entry_main &rArr; main &rArr; APP_Run &rArr; APP_ProgramStep &rArr; SN_Report_OnProgram &rArr; ISP_ReadMemory &rArr; ISP_WaitForACK &rArr; HAL_UART_Receive &rArr; UART_WaitOnFlagUntilTimeout
 </UL>
 <BR>[Calls]<UL><LI><a href="#[57]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
@@ -481,8 +481,8 @@ Global Symbols
 <BR><BR>[Called By]<UL><LI><a href="#[95]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
 </UL>
 
-<P><STRONG><a name="[66]"></a>ADC_Calib_Run</STRONG> (Thumb, 294 bytes, Stack size 32 bytes, adc_calib.o(i.ADC_Calib_Run))
-<BR><BR>[Stack]<UL><LI>Max Depth = 120<LI>Call Chain = ADC_Calib_Run &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
+<P><STRONG><a name="[66]"></a>ADC_Calib_Run</STRONG> (Thumb, 282 bytes, Stack size 32 bytes, adc_calib.o(i.ADC_Calib_Run))
+<BR><BR>[Stack]<UL><LI>Max Depth = 392<LI>Call Chain = ADC_Calib_Run &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[68]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_MotorStep
 <LI><a href="#[69]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
@@ -501,7 +501,7 @@ Global Symbols
 </UL>
 
 <P><STRONG><a name="[6b]"></a>ADC_Consistency_Run</STRONG> (Thumb, 122 bytes, Stack size 16 bytes, adc_consistency.o(i.ADC_Consistency_Run))
-<BR><BR>[Stack]<UL><LI>Max Depth = 104<LI>Call Chain = ADC_Consistency_Run &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
+<BR><BR>[Stack]<UL><LI>Max Depth = 376<LI>Call Chain = ADC_Consistency_Run &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[6e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_GetADC
 <LI><a href="#[69]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
@@ -546,8 +546,8 @@ Global Symbols
 <BR><BR>[Called By]<UL><LI><a href="#[95]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
 </UL>
 
-<P><STRONG><a name="[b0]"></a>APP_Frame_Feed</STRONG> (Thumb, 128 bytes, Stack size 16 bytes, app_frame.o(i.APP_Frame_Feed))
-<BR><BR>[Stack]<UL><LI>Max Depth = 16<LI>Call Chain = APP_Frame_Feed
+<P><STRONG><a name="[b0]"></a>APP_Frame_Feed</STRONG> (Thumb, 114 bytes, Stack size 20 bytes, app_frame.o(i.APP_Frame_Feed))
+<BR><BR>[Stack]<UL><LI>Max Depth = 20<LI>Call Chain = APP_Frame_Feed
 </UL>
 <BR>[Called By]<UL><LI><a href="#[af]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_USB_Receive
 </UL>
@@ -599,8 +599,8 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[95]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
 </UL>
 
-<P><STRONG><a name="[95]"></a>APP_Run</STRONG> (Thumb, 552 bytes, Stack size 48 bytes, app.o(i.APP_Run))
-<BR><BR>[Stack]<UL><LI>Max Depth = 776 + Unknown Stack Size
+<P><STRONG><a name="[95]"></a>APP_Run</STRONG> (Thumb, 552 bytes, Stack size 304 bytes, app.o(i.APP_Run))
+<BR><BR>[Stack]<UL><LI>Max Depth = 1032 + Unknown Stack Size
 <LI>Call Chain = APP_Run &rArr; APP_ProgramStep &rArr; SN_Report_OnProgram &rArr; ISP_ReadMemory &rArr; ISP_WaitForACK &rArr; HAL_UART_Receive &rArr; UART_WaitOnFlagUntilTimeout
 </UL>
 <BR>[Calls]<UL><LI><a href="#[9c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Proto_Run
@@ -632,8 +632,8 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[57]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
 
-<P><STRONG><a name="[67]"></a>APP_SendAck</STRONG> (Thumb, 52 bytes, Stack size 16 bytes, app.o(i.APP_SendAck))
-<BR><BR>[Stack]<UL><LI>Max Depth = 88<LI>Call Chain = APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
+<P><STRONG><a name="[67]"></a>APP_SendAck</STRONG> (Thumb, 58 bytes, Stack size 288 bytes, app.o(i.APP_SendAck))
+<BR><BR>[Stack]<UL><LI>Max Depth = 360<LI>Call Chain = APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[69]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
 <LI><a href="#[87]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CDC_Transmit_FS
@@ -650,8 +650,8 @@ Global Symbols
 <LI><a href="#[73]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Dispatch
 </UL>
 
-<P><STRONG><a name="[a3]"></a>APP_SendEvent</STRONG> (Thumb, 28 bytes, Stack size 8 bytes, app.o(i.APP_SendEvent))
-<BR><BR>[Stack]<UL><LI>Max Depth = 80<LI>Call Chain = APP_SendEvent &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
+<P><STRONG><a name="[a3]"></a>APP_SendEvent</STRONG> (Thumb, 30 bytes, Stack size 280 bytes, app.o(i.APP_SendEvent))
+<BR><BR>[Stack]<UL><LI>Max Depth = 352<LI>Call Chain = APP_SendEvent &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[87]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;CDC_Transmit_FS
 <LI><a href="#[a1]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Frame_Build
@@ -669,7 +669,7 @@ Global Symbols
 </UL>
 
 <P><STRONG><a name="[af]"></a>APP_USB_Receive</STRONG> (Thumb, 24 bytes, Stack size 16 bytes, app.o(i.APP_USB_Receive))
-<BR><BR>[Stack]<UL><LI>Max Depth = 32<LI>Call Chain = APP_USB_Receive &rArr; APP_Frame_Feed
+<BR><BR>[Stack]<UL><LI>Max Depth = 36<LI>Call Chain = APP_USB_Receive &rArr; APP_Frame_Feed
 </UL>
 <BR>[Calls]<UL><LI><a href="#[b0]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Frame_Feed
 </UL>
@@ -748,7 +748,7 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[a0]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_TestStep
 </UL>
 
-<P><STRONG><a name="[14a]"></a>BSP_UART_DMA_Sync</STRONG> (Thumb, 132 bytes, Stack size 16 bytes, bsp_uart.o(i.BSP_UART_DMA_Sync))
+<P><STRONG><a name="[14a]"></a>BSP_UART_DMA_Sync</STRONG> (Thumb, 138 bytes, Stack size 16 bytes, bsp_uart.o(i.BSP_UART_DMA_Sync))
 <BR><BR>[Stack]<UL><LI>Max Depth = 16<LI>Call Chain = BSP_UART_DMA_Sync
 </UL>
 <BR>[Called By]<UL><LI><a href="#[144]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;UART_ReadByte
@@ -807,8 +807,8 @@ Global Symbols
 <BR><BR>[Called By]<UL><LI><a href="#[95]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
 </UL>
 
-<P><STRONG><a name="[9e]"></a>DiamCalib_Run</STRONG> (Thumb, 410 bytes, Stack size 64 bytes, diam_calib.o(i.DiamCalib_Run))
-<BR><BR>[Stack]<UL><LI>Max Depth = 152<LI>Call Chain = DiamCalib_Run &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
+<P><STRONG><a name="[9e]"></a>DiamCalib_Run</STRONG> (Thumb, 408 bytes, Stack size 64 bytes, diam_calib.o(i.DiamCalib_Run))
+<BR><BR>[Stack]<UL><LI>Max Depth = 424<LI>Call Chain = DiamCalib_Run &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[68]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_MotorStep
 <LI><a href="#[69]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
@@ -921,7 +921,7 @@ Global Symbols
 </UL>
 
 <P><STRONG><a name="[78]"></a>FwUpload_Handle</STRONG> (Thumb, 512 bytes, Stack size 64 bytes, fw_upload.o(i.FwUpload_Handle))
-<BR><BR>[Stack]<UL><LI>Max Depth = 280<LI>Call Chain = FwUpload_Handle &rArr; UploadData &rArr; GD25Q_WritePage &rArr; GD25Q_WaitForWriteEnd &rArr; SPI1_SwapByte &rArr; HAL_SPI_TransmitReceive &rArr; SPI_EndRxTxTransaction &rArr; SPI_WaitFlagStateUntilTimeout
+<BR><BR>[Stack]<UL><LI>Max Depth = 424<LI>Call Chain = FwUpload_Handle &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[69]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
 <LI><a href="#[c5]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;GD25Q_WritePage
@@ -941,7 +941,7 @@ Global Symbols
 </UL>
 
 <P><STRONG><a name="[9f]"></a>FwUpload_TimeoutCheck</STRONG> (Thumb, 88 bytes, Stack size 16 bytes, fw_upload.o(i.FwUpload_TimeoutCheck))
-<BR><BR>[Stack]<UL><LI>Max Depth = 104<LI>Call Chain = FwUpload_TimeoutCheck &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
+<BR><BR>[Stack]<UL><LI>Max Depth = 376<LI>Call Chain = FwUpload_TimeoutCheck &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[69]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
 <LI><a href="#[7d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_SetRGB
@@ -1322,13 +1322,13 @@ Global Symbols
 <P><STRONG><a name="[f2]"></a>HAL_PCD_IRQHandler</STRONG> (Thumb, 308 bytes, Stack size 24 bytes, stm32f1xx_hal_pcd.o(i.HAL_PCD_IRQHandler))
 <BR><BR>[Stack]<UL><LI>Max Depth = 192<LI>Call Chain = HAL_PCD_IRQHandler &rArr; PCD_EP_ISR_Handler &rArr; HAL_PCD_EP_DB_Transmit &rArr; HAL_PCD_DataInStageCallback &rArr; USBD_LL_DataInStage &rArr; USBD_CtlReceiveStatus &rArr; USBD_LL_PrepareReceive &rArr; HAL_PCD_EP_Receive &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
-<BR>[Calls]<UL><LI><a href="#[f4]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;PCD_EP_ISR_Handler
+<BR>[Calls]<UL><LI><a href="#[f3]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_ReadInterrupts
+<LI><a href="#[f4]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;PCD_EP_ISR_Handler
 <LI><a href="#[f6]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_SetAddress
 <LI><a href="#[f8]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_SuspendCallback
 <LI><a href="#[f9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_SOFCallback
 <LI><a href="#[f7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_ResumeCallback
 <LI><a href="#[f5]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_ResetCallback
-<LI><a href="#[f3]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_ReadInterrupts
 </UL>
 <BR>[Called By]<UL><LI><a href="#[36]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_LP_CAN1_RX0_IRQHandler
 <LI><a href="#[35]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_HP_CAN1_TX_IRQHandler
@@ -1337,12 +1337,12 @@ Global Symbols
 <P><STRONG><a name="[fa]"></a>HAL_PCD_Init</STRONG> (Thumb, 186 bytes, Stack size 24 bytes, stm32f1xx_hal_pcd.o(i.HAL_PCD_Init))
 <BR><BR>[Stack]<UL><LI>Max Depth = 88<LI>Call Chain = HAL_PCD_Init &rArr; HAL_PCD_MspInit &rArr; HAL_GPIO_Init
 </UL>
-<BR>[Calls]<UL><LI><a href="#[fc]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_DisableGlobalInt
+<BR>[Calls]<UL><LI><a href="#[fe]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_SetCurrentMode
+<LI><a href="#[fc]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_DisableGlobalInt
 <LI><a href="#[ff]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_DevInit
 <LI><a href="#[100]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_DevDisconnect
 <LI><a href="#[fd]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_CoreInit
 <LI><a href="#[fb]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_MspInit
-<LI><a href="#[fe]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_SetCurrentMode
 </UL>
 <BR>[Called By]<UL><LI><a href="#[15e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USBD_LL_Init
 </UL>
@@ -1842,7 +1842,7 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[a0]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_TestStep
 </UL>
 
-<P><STRONG><a name="[76]"></a>U4_GetVersion</STRONG> (Thumb, 86 bytes, Stack size 16 bytes, protocol_u4.o(i.U4_GetVersion))
+<P><STRONG><a name="[76]"></a>U4_GetVersion</STRONG> (Thumb, 92 bytes, Stack size 16 bytes, protocol_u4.o(i.U4_GetVersion))
 <BR><BR>[Stack]<UL><LI>Max Depth = 32<LI>Call Chain = U4_GetVersion &rArr; U4_SendCmd_Start
 </UL>
 <BR>[Calls]<UL><LI><a href="#[13f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_SendCmd_Start
@@ -1860,8 +1860,8 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[57]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
 
-<P><STRONG><a name="[9d]"></a>U4_Proto_Run</STRONG> (Thumb, 624 bytes, Stack size 56 bytes, protocol_u4.o(i.U4_Proto_Run))
-<BR><BR>[Stack]<UL><LI>Max Depth = 144<LI>Call Chain = U4_Proto_Run &rArr; U4_ScanReport &rArr; Frame_Parse_1B_LE &rArr; Frame_CRC16
+<P><STRONG><a name="[9d]"></a>U4_Proto_Run</STRONG> (Thumb, 628 bytes, Stack size 312 bytes, protocol_u4.o(i.U4_Proto_Run))
+<BR><BR>[Stack]<UL><LI>Max Depth = 656<LI>Call Chain = U4_Proto_Run &rArr; U4_ScanReport &rArr; Frame_Parse_1B_LE &rArr; Frame_CRC16
 </UL>
 <BR>[Calls]<UL><LI><a href="#[142]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
 <LI><a href="#[143]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ParseReport
@@ -1908,7 +1908,7 @@ Global Symbols
 <BR><BR>[Called By]<UL><LI><a href="#[89]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_ProgramStep
 </UL>
 
-<P><STRONG><a name="[77]"></a>U4_SetReportPeriod</STRONG> (Thumb, 72 bytes, Stack size 16 bytes, protocol_u4.o(i.U4_SetReportPeriod))
+<P><STRONG><a name="[77]"></a>U4_SetReportPeriod</STRONG> (Thumb, 66 bytes, Stack size 16 bytes, protocol_u4.o(i.U4_SetReportPeriod))
 <BR><BR>[Stack]<UL><LI>Max Depth = 32<LI>Call Chain = U4_SetReportPeriod &rArr; U4_SendCmd_Start
 </UL>
 <BR>[Calls]<UL><LI><a href="#[13f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_SendCmd_Start
@@ -1962,7 +1962,7 @@ Global Symbols
 <LI><a href="#[73]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Dispatch
 </UL>
 
-<P><STRONG><a name="[74]"></a>U7_GetVersion</STRONG> (Thumb, 84 bytes, Stack size 16 bytes, protocol_u7.o(i.U7_GetVersion))
+<P><STRONG><a name="[74]"></a>U7_GetVersion</STRONG> (Thumb, 90 bytes, Stack size 16 bytes, protocol_u7.o(i.U7_GetVersion))
 <BR><BR>[Stack]<UL><LI>Max Depth = 32<LI>Call Chain = U7_GetVersion &rArr; U7_SendCmd_Start
 </UL>
 <BR>[Calls]<UL><LI><a href="#[145]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_SendCmd_Start
@@ -1972,7 +1972,7 @@ Global Symbols
 <LI><a href="#[73]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Dispatch
 </UL>
 
-<P><STRONG><a name="[68]"></a>U7_MotorStep</STRONG> (Thumb, 82 bytes, Stack size 16 bytes, protocol_u7.o(i.U7_MotorStep))
+<P><STRONG><a name="[68]"></a>U7_MotorStep</STRONG> (Thumb, 76 bytes, Stack size 16 bytes, protocol_u7.o(i.U7_MotorStep))
 <BR><BR>[Stack]<UL><LI>Max Depth = 32<LI>Call Chain = U7_MotorStep &rArr; U7_SendCmd_Start
 </UL>
 <BR>[Calls]<UL><LI><a href="#[145]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_SendCmd_Start
@@ -2001,8 +2001,8 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[57]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
 
-<P><STRONG><a name="[9c]"></a>U7_Proto_Run</STRONG> (Thumb, 560 bytes, Stack size 56 bytes, protocol_u7.o(i.U7_Proto_Run))
-<BR><BR>[Stack]<UL><LI>Max Depth = 120<LI>Call Chain = U7_Proto_Run &rArr; UART_SendArray &rArr; HAL_UART_Transmit &rArr; UART_WaitOnFlagUntilTimeout
+<P><STRONG><a name="[9c]"></a>U7_Proto_Run</STRONG> (Thumb, 546 bytes, Stack size 312 bytes, protocol_u7.o(i.U7_Proto_Run))
+<BR><BR>[Stack]<UL><LI>Max Depth = 376<LI>Call Chain = U7_Proto_Run &rArr; UART_SendArray &rArr; HAL_UART_Transmit &rArr; UART_WaitOnFlagUntilTimeout
 </UL>
 <BR>[Calls]<UL><LI><a href="#[c9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Frame_Parse_1B
 <LI><a href="#[c7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Frame_Build_1B
@@ -2014,7 +2014,7 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[95]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
 </UL>
 
-<P><STRONG><a name="[ad]"></a>U7_SelfTest</STRONG> (Thumb, 80 bytes, Stack size 8 bytes, protocol_u7.o(i.U7_SelfTest))
+<P><STRONG><a name="[ad]"></a>U7_SelfTest</STRONG> (Thumb, 84 bytes, Stack size 8 bytes, protocol_u7.o(i.U7_SelfTest))
 <BR><BR>[Stack]<UL><LI>Max Depth = 24<LI>Call Chain = U7_SelfTest &rArr; U7_SendCmd_Start
 </UL>
 <BR>[Calls]<UL><LI><a href="#[145]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_SendCmd_Start
@@ -2022,7 +2022,7 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[a0]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_TestStep
 </UL>
 
-<P><STRONG><a name="[bc]"></a>UART_ClearBuffer</STRONG> (Thumb, 40 bytes, Stack size 0 bytes, bsp_uart.o(i.UART_ClearBuffer))
+<P><STRONG><a name="[bc]"></a>UART_ClearBuffer</STRONG> (Thumb, 42 bytes, Stack size 0 bytes, bsp_uart.o(i.UART_ClearBuffer))
 <BR><BR>[Called By]<UL><LI><a href="#[9c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Proto_Run
 <LI><a href="#[147]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Proto_Init
 <LI><a href="#[8f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ISP_WriteMemory
@@ -2595,7 +2595,7 @@ Global Symbols
 <BR>[Address Reference Count : 1]<UL><LI> startup_stm32f103x6.o(RESET)
 </UL>
 <P><STRONG><a name="[57]"></a>main</STRONG> (Thumb, 66 bytes, Stack size 0 bytes, main.o(i.main))
-<BR><BR>[Stack]<UL><LI>Max Depth = 776 + Unknown Stack Size
+<BR><BR>[Stack]<UL><LI>Max Depth = 1032 + Unknown Stack Size
 <LI>Call Chain = main &rArr; APP_Run &rArr; APP_ProgramStep &rArr; SN_Report_OnProgram &rArr; ISP_ReadMemory &rArr; ISP_WaitForACK &rArr; HAL_UART_Receive &rArr; UART_WaitOnFlagUntilTimeout
 </UL>
 <BR>[Calls]<UL><LI><a href="#[147]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Proto_Init
@@ -2645,7 +2645,7 @@ Local Symbols
 <LI><a href="#[8b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;ISP_Connect
 </UL>
 
-<P><STRONG><a name="[146]"></a>U7_SendCmd_Result</STRONG> (Thumb, 24 bytes, Stack size 0 bytes, protocol_u7.o(i.U7_SendCmd_Result))
+<P><STRONG><a name="[146]"></a>U7_SendCmd_Result</STRONG> (Thumb, 26 bytes, Stack size 0 bytes, protocol_u7.o(i.U7_SendCmd_Result))
 <BR><BR>[Called By]<UL><LI><a href="#[9b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Ping
 <LI><a href="#[68]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_MotorStep
 </UL>
@@ -2667,8 +2667,8 @@ Local Symbols
 <LI><a href="#[9d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Run
 </UL>
 
-<P><STRONG><a name="[142]"></a>U4_ScanReport</STRONG> (Thumb, 302 bytes, Stack size 40 bytes, protocol_u4.o(i.U4_ScanReport))
-<BR><BR>[Stack]<UL><LI>Max Depth = 88<LI>Call Chain = U4_ScanReport &rArr; Frame_Parse_1B_LE &rArr; Frame_CRC16
+<P><STRONG><a name="[142]"></a>U4_ScanReport</STRONG> (Thumb, 302 bytes, Stack size 296 bytes, protocol_u4.o(i.U4_ScanReport))
+<BR><BR>[Stack]<UL><LI>Max Depth = 344<LI>Call Chain = U4_ScanReport &rArr; Frame_Parse_1B_LE &rArr; Frame_CRC16
 </UL>
 <BR>[Calls]<UL><LI><a href="#[143]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ParseReport
 <LI><a href="#[144]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;UART_ReadByte
@@ -2677,7 +2677,7 @@ Local Symbols
 <BR>[Called By]<UL><LI><a href="#[9d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Run
 </UL>
 
-<P><STRONG><a name="[140]"></a>U4_SendCmd_Result</STRONG> (Thumb, 28 bytes, Stack size 0 bytes, protocol_u4.o(i.U4_SendCmd_Result))
+<P><STRONG><a name="[140]"></a>U4_SendCmd_Result</STRONG> (Thumb, 40 bytes, Stack size 0 bytes, protocol_u4.o(i.U4_SendCmd_Result))
 <BR><BR>[Called By]<UL><LI><a href="#[a4]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ZeroSensor
 <LI><a href="#[a5]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_StartCalib
 <LI><a href="#[77]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_SetReportPeriod
@@ -2708,7 +2708,7 @@ Local Symbols
 </UL>
 
 <P><STRONG><a name="[73]"></a>APP_Dispatch</STRONG> (Thumb, 908 bytes, Stack size 88 bytes, app.o(i.APP_Dispatch))
-<BR><BR>[Stack]<UL><LI>Max Depth = 368<LI>Call Chain = APP_Dispatch &rArr; FwUpload_Handle &rArr; UploadData &rArr; GD25Q_WritePage &rArr; GD25Q_WaitForWriteEnd &rArr; SPI1_SwapByte &rArr; HAL_SPI_TransmitReceive &rArr; SPI_EndRxTxTransaction &rArr; SPI_WaitFlagStateUntilTimeout
+<BR><BR>[Stack]<UL><LI>Max Depth = 512<LI>Call Chain = APP_Dispatch &rArr; FwUpload_Handle &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[74]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_GetVersion
 <LI><a href="#[6e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_GetADC
@@ -2760,7 +2760,7 @@ Local Symbols
 </UL>
 
 <P><STRONG><a name="[a2]"></a>APP_SendAdcResult</STRONG> (Thumb, 96 bytes, Stack size 48 bytes, app.o(i.APP_SendAdcResult))
-<BR><BR>[Stack]<UL><LI>Max Depth = 160<LI>Call Chain = APP_SendAdcResult &rArr; BSP_ADC_ReadChannel &rArr; BSP_ADC_ReadRaw &rArr; HAL_ADC_Start &rArr; ADC_Enable
+<BR><BR>[Stack]<UL><LI>Max Depth = 400<LI>Call Chain = APP_SendAdcResult &rArr; APP_SendEvent &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[70]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;BSP_ADC_ReadChannel
 <LI><a href="#[a3]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_SendEvent
@@ -2769,7 +2769,7 @@ Local Symbols
 </UL>
 
 <P><STRONG><a name="[a0]"></a>APP_TestStep</STRONG> (Thumb, 406 bytes, Stack size 24 bytes, app.o(i.APP_TestStep))
-<BR><BR>[Stack]<UL><LI>Max Depth = 184<LI>Call Chain = APP_TestStep &rArr; APP_SendAdcResult &rArr; BSP_ADC_ReadChannel &rArr; BSP_ADC_ReadRaw &rArr; HAL_ADC_Start &rArr; ADC_Enable
+<BR><BR>[Stack]<UL><LI>Max Depth = 424<LI>Call Chain = APP_TestStep &rArr; APP_SendAdcResult &rArr; APP_SendEvent &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[ad]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_SelfTest
 <LI><a href="#[9b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Ping
@@ -2871,13 +2871,13 @@ Local Symbols
 <P><STRONG><a name="[f4]"></a>PCD_EP_ISR_Handler</STRONG> (Thumb, 934 bytes, Stack size 40 bytes, stm32f1xx_hal_pcd.o(i.PCD_EP_ISR_Handler))
 <BR><BR>[Stack]<UL><LI>Max Depth = 168<LI>Call Chain = PCD_EP_ISR_Handler &rArr; HAL_PCD_EP_DB_Transmit &rArr; HAL_PCD_DataInStageCallback &rArr; USBD_LL_DataInStage &rArr; USBD_CtlReceiveStatus &rArr; USBD_LL_PrepareReceive &rArr; HAL_PCD_EP_Receive &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
-<BR>[Calls]<UL><LI><a href="#[ed]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_EPStartXfer
+<BR>[Calls]<UL><LI><a href="#[e7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_ReadPMA
+<LI><a href="#[ed]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_EPStartXfer
 <LI><a href="#[e8]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_EP_DB_Transmit
 <LI><a href="#[e6]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_EP_DB_Receive
 <LI><a href="#[108]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_SetupStageCallback
 <LI><a href="#[e0]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_DataOutStageCallback
 <LI><a href="#[de]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_DataInStageCallback
-<LI><a href="#[e7]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;USB_ReadPMA
 </UL>
 <BR>[Called By]<UL><LI><a href="#[f2]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_PCD_IRQHandler
 </UL>

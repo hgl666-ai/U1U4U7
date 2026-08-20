@@ -39,6 +39,7 @@
 #define TMC2209_REG_PWMCONF       ((uint8_t)0x70)
 #define TMC2209_REG_PWM_SCALE     ((uint8_t)0x71)
 #define TMC2209_REG_PWM_AUTO      ((uint8_t)0x72)
+#define U7_DEBUG    0
 
 /*===== 寄存器位域定义 (union, 与 ESP 样板一致) =====*/
 
@@ -137,6 +138,9 @@ typedef union {
 typedef union {
     uint32_t raw;
     struct {
+        /* TMC2209 datasheet Rev1.03 page 25: IHOLD=bit4:0(5), IRUN=bit12:8(5),
+         * IHOLDDELAY=bit19:16(4) — 中间各留 3 位 reserved (与 TMC2208 布局不同!)。
+         * [2026-08-19] 曾误改成 TMC2208 布局 (IRUN=bit9:5), 已按手册 Rev1.03 回退。 */
         uint32_t ihold      : 5;
         uint32_t reserved1  : 3;
         uint32_t irun       : 5;

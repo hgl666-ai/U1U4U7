@@ -146,11 +146,22 @@ int main(void)
    * 细分不确定; 此处按备份版本恢复: 检测到 TMC 在线则显式配置 16 细分等参数)
    * [2026-08-18] 排障开关: 若怀疑 TMC 初始化导致 U7 异常, 定义 U7_SKIP_TMC_CFG
    * 可跳过 (电机退化为 TMC 上电默认配置) */
+#ifdef U7_DEBUG
+  /* [2026-08-19 15:5x] 诊断: 上电自动跑 TMC2209 完整自检
+   * (通信/回环/地址扫描/写配置/读回验证/故障标志), 输出走 USART1(PA9),
+   * 用 USB-TTL 监听即可判断 SetDefaults 是否真正写入成功 + 有无 S2G/OLA/OT 故障 */
+  BSP_TMC_Test();
+#endif /* U7_DEBUG */
+
 #ifndef U7_SKIP_TMC_CFG
   BSP_TMC_Init();
   if (BSP_TMC_IsAlive()) {
       BSP_TMC_SetDefaults();   /* GCONF/IHOLD_IRUN/CHOPCONF(mres=4→16细分)/PWMCONF */
   }
+  /* [2026-08-19] 修复: BSP_TMC_Init 已把 TIM3 切成 UART 模式 (自由计数),
+   * 必须归还给电机 PWM, 否则 TIM3 停在 ARR=0xFFFF/CC2E=0 状态,
+   * 后续 BSP_Motor_Move 虽然会重配, 但应显式恢复, 避免状态不一致 */
+  BSP_TMC_Deinit();
 #endif /* U7_SKIP_TMC_CFG */
   BSP_Motor_Init();
 

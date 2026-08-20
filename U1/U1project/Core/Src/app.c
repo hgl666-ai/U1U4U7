@@ -102,15 +102,13 @@ static void APP_PrintU16(uint16_t v)
     APP_Print(&b[i]);
 }
 
-/* ACK/Event 共用 USB 发送缓冲 (主循环单线程, 互不嵌套; 减 .bss) [2026-08-17] */
-static uint8_t app_usb_buf[FRAME_BUF_SIZE];
-
 /* ACK 帧: SEQ 回显请求序号 */
 void APP_SendAck(uint16_t cmd, uint8_t *data, uint16_t len)
 {
-    uint16_t total = Frame_Build(app_usb_buf, cmd, pc_seq, data, len);
+    uint8_t buf[FRAME_BUF_SIZE];
+    uint16_t total = Frame_Build(buf, cmd, pc_seq, data, len);
     uint32_t tick = HAL_GetTick();
-    while (CDC_Transmit_FS(app_usb_buf, total) == USBD_BUSY) {
+    while (CDC_Transmit_FS(buf, total) == USBD_BUSY) {
         if (HAL_GetTick() - tick > 50) break;
     }
 }
@@ -118,8 +116,9 @@ void APP_SendAck(uint16_t cmd, uint8_t *data, uint16_t len)
 /* 自发帧: SEQ=0 */
 void APP_SendEvent(uint16_t cmd, uint8_t *data, uint16_t len)
 {
-    uint16_t total = Frame_Build(app_usb_buf, cmd, 0, data, len);
-    CDC_Transmit_FS(app_usb_buf, total);
+    uint8_t buf[FRAME_BUF_SIZE];
+    uint16_t total = Frame_Build(buf, cmd, 0, data, len);
+    CDC_Transmit_FS(buf, total);
 }
 
 /*===== Flash 头部辅助: 读取某槽的 [大小 版本 标志] =====
@@ -244,7 +243,6 @@ static void APP_ProgramStep(void)
         return;
 
     case 4: /* 跳转运行 */
-        /* ISP_Go 返回值有意忽略: G0 上 Go 跳转本身不可靠, 启动依赖下面的 BOOT0 拉低+复位 */
         ISP_Go(0x08000000);   /* 先试 Go 直接跳转 */
         /* [2026-08-11] ISP_Go 在 G0 可能不可靠; 且 BOOT0(PA8) 全程保持高电平,
          * 须拉低 BOOT0 + 复位, 让 U4 从 flash 正常启动应用 */
@@ -663,8 +661,7 @@ void APP_Run(void)
         uint16_t f_len;
         uint8_t *fb = APP_Frame_Consume(&f_len);
         uint16_t cmd, len, seq;
-        /* [2026-08-17] M9: 改 static 减栈压 (主循环单线程协作模型, 无重入) */
-        static uint8_t data[FRAME_MAX_DATA];
+        uint8_t data[FRAME_MAX_DATA];
         /* Frame_Parse 已做 CRC 校验, 失败代表帧错或 CRC 错 */
         if (Frame_Parse(fb, f_len, &cmd, &seq, data, &len)) {
             /* 帧序号检测: seq != 0 时应 = last_seq + 1 (溢出回绕到 1)

@@ -11,16 +11,9 @@ static uint8_t  frame_ready  = 0;
 /*===== 帧接收状态机 (ISR 上下文) =====
  * 收完一整帧后置 frame_ready=1, 由 APP_Run 解析。
  * LEN 严格按协议上限 FRAME_MAX_DATA (256) 卡死, 防止 PC 乱发巨型帧打爆缓冲区。
- * [2026-08-17] S1 修复: ① frame_ready=1 后拒收新字节 (单槽缓冲, 等主循环消费);
- *              ② frame_pos 加硬上限, 任何异常输入都不会写出 frame_buf 边界。
  */
 void APP_Frame_Feed(uint8_t byte)
 {
-    if (frame_ready) return;                    /* 上一帧未消费, 丢弃新字节 */
-    if (frame_pos >= APP_FRAME_BUF_SIZE) {      /* 硬上限保护 (理论不可达) */
-        frame_pos = 0;
-        return;
-    }
     switch (frame_pos) {
     case 0:
         if (byte == FRAME_HDR0) frame_buf[frame_pos++] = byte;

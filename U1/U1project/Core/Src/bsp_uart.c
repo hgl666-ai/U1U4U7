@@ -1,9 +1,7 @@
 #include "bsp_uart.h"
 
-/* DMA 环形缓冲 (8E1 时 HALFWORD 传输需 2 字节对齐)
- * USART2 默认 8N1: NDTR=256, 每传输写 1 字节;
- * 切 8E1 后 (U4_UART_SetMode): NDTR=128, 每传输写 2 字节(低=数据) */
-__ALIGN_BEGIN uint8_t u4_dma_buf[DMA_BUF_SIZE] __ALIGN_END; /* USART2: 见上 */
+/* DMA 环形缓冲 (HALFWORD 传输需 2 字节对齐) */
+__ALIGN_BEGIN uint8_t u4_dma_buf[DMA_BUF_SIZE] __ALIGN_END; /* USART2 9E1: NDTR=128, 每传输写 2 字节(低=数据) */
 __ALIGN_BEGIN static uint8_t u7_dma_buf[DMA_BUF_SIZE] __ALIGN_END; /* USART1 8N1: NDTR=256, 每传输写 1 字节 */
 
 /* DMA 启动结果 (诊断用): 1=HAL_UART_Receive_DMA 成功 */

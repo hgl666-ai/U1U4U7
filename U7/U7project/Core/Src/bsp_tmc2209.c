@@ -369,13 +369,16 @@ uint8_t BSP_TMC_ReadReg(uint8_t reg, uint32_t *val)
     uint8_t dg[4];
     build_read_datagram(TMC2209_ADDR_MOTOR, reg, dg);
 
-    /* 打印发送的数据报 (确认 CRC 和字节序) */
+    /* 打印发送的数据报 (确认 CRC 和字节序) [2026-08-19] 包进 U7_DEBUG:
+     * 此前无条件打印, IsAlive 上电即向 USART1 发字符, 污染 U1↔U7 链路 */
+#if U7_DEBUG
     tmc_print("[DBG] tx:");
     for (uint8_t i = 0; i < 4; i++) {
         tmc_print_hex(dg[i], 2);
         tmc_print(" ");
     }
     tmc_print("\r\n");
+#endif
 
     tx_mode();
     __disable_irq();
@@ -401,17 +404,21 @@ uint8_t BSP_TMC_ReadReg(uint8_t reg, uint32_t *val)
     __enable_irq();
 
     if (!rx_ok) {
+#if U7_DEBUG
         tmc_print("[DBG] TIMEOUT at byte ");
         tmc_print_hex(rx_fail, 1);
         tmc_print("\r\n");
+#endif
         return 0;
     }
+#if U7_DEBUG
     tmc_print("[DBG] rx:");
     for (uint8_t i = 0; i < 8; i++) {
         tmc_print_hex(resp[i], 2);
         tmc_print(" ");
     }
     tmc_print("\r\n");
+#endif
 
     return tmc_parse_response(resp, 8, val);
 }
@@ -764,9 +771,9 @@ uint8_t BSP_TMC_Test(void)
 void BSP_TMC_SetDefaults(void)
 {
     GCONF_reg_t gconf = {0};
-    gconf.bits.I_scale_analog   = 1;   /* 内部5V基准, 忽略VREF */
-    gconf.bits.internal_Rsense  = 0;
-    gconf.bits.en_SpreadCycle   = 0;
+    gconf.bits.I_scale_analog   = 1;   /* 内部5V基准, 忽略VREF (VREF 固定分压 0.833V, 内部基准更可控) */
+    gconf.bits.internal_Rsense  = 0;   /* 外部感应电阻 R37/R38 = 110mΩ */
+    gconf.bits.en_SpreadCycle   = 0;   /* StealthChop2 (SPREAD 引脚接地硬件锁定, 寄存器无效) */
     gconf.bits.shaft            = 0;
     gconf.bits.index_otpw       = 1;
     gconf.bits.index_step       = 0;
@@ -777,13 +784,23 @@ void BSP_TMC_SetDefaults(void)
     BSP_TMC_WriteReg(TMC2209_REG_GCONF, gconf.raw);
 
     IHOLD_IRUN_reg_t ihold_irun = {0};
+    /* [2026-08-19] 丢步修复: vsense=1(低量程)+irun=24 时电流仅 ≈0.59A RMS,
+     * 为电机额定 1.5A 的 39% → 力矩不足全程跳步。
+     * 采用 vsense=0(高量程) + irun=24 ≈1.05A RMS (70% 降额):
+     * 比原配置强 ~78% 又不过量; 曾试 irun=28 (~1.2A) 实测 TMC 发热 + 电机不转,
+     * 疑似电流过大触发过流/过热保护, 故保守取值, 实测不足再逐步上调
+     * [2026-08-19 15:5x] 手册 Rev1.03 p25 核对: IRUN=bit12:8, IHOLD=bit4:0,
+     * IHOLDDELAY=bit19:16 (TMC2209 布局, 与 TMC2208 不同, 位域已按手册核实正确)
+     * [2026-08-20 11:0x] ihold 12→8: 实测保持功耗 ~10W (ihold=12 ≈0.5A), 发热快;
+     * 测量治具轻载, 保持力矩需求低, 降回 8 (≈0.35A, ~7W)。
+     * 若到位后仍觉热: ①再降 6 (≈0.26A); ②流程结束由上位机发 0x24 MOTOR_STOP 脱机(0W) */
     ihold_irun.bits.irun       = 24;
-    ihold_irun.bits.ihold      = 12;
+    ihold_irun.bits.ihold      = 12;    /* 保持电流 ≈IRUN 的 33% (到位保持力矩), 不够再调 10~12 */
     ihold_irun.bits.iholddelay = 3;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
 
     TPOWERDOWN_reg_t tpowerdown = {0};
-    tpowerdown.bits.tpowerdown = 20;
+    tpowerdown.bits.tpowerdown = 20;   /* 到位后 ~0.44s 内维持 IRUN, 再降至 IHOLD */
     BSP_TMC_WriteReg(TMC2209_REG_TPOWERDOWN, tpowerdown.raw);
 
     CHOPCONF_reg_t chopconf = {0};
@@ -791,8 +808,8 @@ void BSP_TMC_SetDefaults(void)
     chopconf.bits.hstrt     = 4;
     chopconf.bits.hend      = 1;
     chopconf.bits.tbl       = 2;
-    chopconf.bits.vsense    = 1;
-    chopconf.bits.mres      = 4;
+    chopconf.bits.vsense    = 0;       /* [2026-08-19] 高电流量程 (丢步修复核心) */
+    chopconf.bits.mres      = 4;       /* 16 微步 = 3200 脉冲/圈, 与 U1 diam_calib 一致 */
     chopconf.bits.intpol    = 1;
     chopconf.bits.dedge     = 0;
     chopconf.bits.diss2g    = 0;
@@ -805,7 +822,10 @@ void BSP_TMC_SetDefaults(void)
     pwmconf.bits.pwm_freq      = 1;
     pwmconf.bits.pwm_autoscale = 1;
     pwmconf.bits.pwm_autograd  = 1;
-    pwmconf.bits.freewheel     = 1;
+    /* [2026-08-19 15:5x] 手册 Rev1.03 p32: FREEWHEEL 仅在 I_HOLD=0 时生效。
+     * 原设 freewheel=1 (freewheeling) — 因 IHOLD=12≠0 本不生效, 现改为
+     * 00=Normal operation, 避免 IHOLD 意外为 0 时电机无保持力矩 */
+    pwmconf.bits.freewheel     = 0;
     pwmconf.bits.pwm_reg       = 8;
     pwmconf.bits.pwm_lim       = 12;
     BSP_TMC_WriteReg(TMC2209_REG_PWMCONF, pwmconf.raw);

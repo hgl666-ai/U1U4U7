@@ -1,0 +1,772 @@
+#include "app.h"
+#include "usbd_cdc_if.h"
+#include "protocol_frame.h"
+#include "gd25q128.h"
+#include "isp_programmer.h"
+#include "protocol_u4.h"
+#include "protocol_u7.h"
+#include "bsp_gpio.h"
+#include "bsp_adc.h"
+#include <string.h>
+#include <stdio.h>
+
+/*===== 全局状态 =====*/
+static APP_State_t  app_state    = APP_STATE_INIT;
+static RGB_Color_t  rgb_color    = RGB_WHITE;
+static uint8_t      rgb_blinking = 1;
+static uint8_t      rgb_on       = 1;
+
+/* 帧接收 */
+static uint8_t  frame_buf[APP_FRAME_BUF_SIZE];
+static uint16_t frame_pos    = 0;
+static uint16_t frame_dlen   = 0;
+static uint8_t  frame_ready  = 0;
+static uint16_t pc_seq       = 0;
+static uint16_t last_seq     = 0;          /* 上次请求帧序号 (序号错检测) */
+static uint8_t  seq_inited   = 0;          /* 是否已建立序号基线 */
+
+/* 固件上传 (CMD 9~11): 双固件支持, slot0=Bootloader, slot1=App */
+static uint32_t upload_addr         = 0;   /* Flash 写入地址 (base+8 起) */
+static uint32_t upload_total        = 0;   /* 声明的文件大小 (字节) */
+static uint32_t upload_count        = 0;   /* 已写入字节数 */
+static uint16_t upload_total_frames = 0;   /* 声明的总帧数 */
+static uint16_t upload_data_frames  = 0;   /* 已收到的数据帧数 */
+static uint8_t  upload_version[3]   = {0}; /* 当前槽固件版本号 */
+static uint8_t  page_buf[APP_PAGE_SIZE];
+static uint16_t page_idx             = 0;
+static uint8_t  upload_slot          = 0;  /* 0=Bootloader, 1=App */
+static uint32_t upload_last_tick     = 0;  /* 上次收到数据的时间戳 */
+static uint8_t  upload_error         = 0;  /* 0=正常, 非0=错误码 (写入失败/溢出) */
+
+/* PROGRAM: 分两段烧录 Bootloader + App */
+static int8_t   prog_step    = -1;
+static uint8_t  prog_phase   = 0;    /* 0=Bootloader, 1=App */
+static uint32_t prog_slotsize[2];    /* 各槽固件大小 */
+
+/* TEST */
+static int8_t   test_step    = -1;
+static uint8_t  test_fail    = 0;
+static uint8_t  test_mode    = 0;
+
+/* 延迟 ACK: 非阻塞 U7 查询完成后回传 */
+static uint16_t deferred_cmd = 0;
+static uint16_t deferred_seq = 0;
+
+/*===== LED =====*/
+static void APP_SetRGB(RGB_Color_t color, uint8_t blinking)
+{
+    rgb_color = color; rgb_blinking = blinking; rgb_on = 1;
+}
+
+static void APP_RGB_Update(void)
+{
+    static uint32_t last_toggle = 0;
+    uint32_t now = HAL_GetTick();
+    uint32_t period;
+    switch (rgb_blinking) {
+        case 0:  period = 0;   break;
+        case 1:  period = 500; break;
+        case 2:  period = 125; break;
+        default: period = 0;   break;
+    }
+    if (period > 0 && (now - last_toggle >= period)) { rgb_on = !rgb_on; last_toggle = now; }
+    else if (period == 0) { rgb_on = 1; }
+
+    uint8_t r = 0, g = 0, b = 0;
+    if (rgb_on) {
+        switch (rgb_color) {
+            case RGB_RED:     r = 1; break;
+            case RGB_GREEN:   g = 1; break;
+            case RGB_BLUE:    b = 1; break;
+            case RGB_YELLOW:  r = 1; g = 1; break;
+            case RGB_CYAN:    g = 1; b = 1; break;
+            case RGB_MAGENTA: r = 1; b = 1; break;
+            case RGB_WHITE:   r = 1; g = 1; b = 1; break;
+            default: break;
+        }
+    }
+    BSP_RGB_Set(r, g, b);
+}
+
+/*===== USB 发送 =====*/
+static void APP_Print(const char *str)
+{
+    uint16_t len = (uint16_t)strlen(str);
+    uint32_t tick = HAL_GetTick();
+    while (CDC_Transmit_FS((uint8_t *)str, len) == USBD_BUSY) {
+        if (HAL_GetTick() - tick > 50) break;
+    }
+}
+
+/* ACK 帧: SEQ 回显请求序号 */
+static void APP_SendAck(uint16_t cmd, uint8_t *data, uint16_t len)
+{
+    uint8_t buf[FRAME_BUF_SIZE];
+    uint16_t total = Frame_Build(buf, cmd, pc_seq, data, len);
+    CDC_Transmit_FS(buf, total);
+}
+
+/* 自发帧: SEQ=0 */
+static void APP_SendEvent(uint16_t cmd, uint8_t *data, uint16_t len)
+{
+    uint8_t buf[FRAME_BUF_SIZE];
+    uint16_t total = Frame_Build(buf, cmd, 0, data, len);
+    CDC_Transmit_FS(buf, total);
+}
+
+/*===== Flash 头部辅助: 读取某槽的 [大小 版本 标志] =====
+ * @param slot    0=Bootloader, 1=App
+ * @param p_size  输出文件大小 (4B little-endian 解码后)
+ * @param p_ver   输出 3B 版本号 [主 次修订]
+ * @param p_flag  输出完整标志
+ */
+static void Flash_ReadHead(uint8_t slot, uint32_t *p_size, uint8_t p_ver[3], uint8_t *p_flag)
+{
+    uint8_t hdr[FW_HEAD_SIZE];
+    uint32_t base = (slot == 0) ? FW_SLOT0_BASE : FW_SLOT1_BASE;
+    GD25Q_ReadBuffer(hdr, base, FW_HEAD_SIZE);
+    if (p_size) *p_size = (uint32_t)hdr[0] | ((uint32_t)hdr[1] << 8)
+                          | ((uint32_t)hdr[2] << 16) | ((uint32_t)hdr[3] << 24);
+    if (p_ver)  { p_ver[0] = hdr[4]; p_ver[1] = hdr[5]; p_ver[2] = hdr[6]; }
+    if (p_flag) *p_flag = hdr[7];
+}
+
+/*===== Flash 头部辅助: 写入完整标志 (单字节独立页编程, 断电不丢失) =====
+ * @return 0=成功, 非0=失败
+ */
+static uint8_t Flash_WriteCompleteFlag(uint8_t slot, uint8_t flag)
+{
+    uint32_t base = (slot == 0) ? FW_SLOT0_BASE : FW_SLOT1_BASE;
+    return GD25Q_WritePage(&flag, base + FW_HEAD_OFF_FLAG, 1) ? 0 : APP_STATUS_ERR_FLASH;
+}
+
+/*===== ADC 测试结果发送 (CMD=0x0014, 治具自发, 16B) =====
+ * 4 通道 × 4B = 16B
+ *   [0]    Channel (1=VO1, 2=VO2, 3=AMS5600, 4=VDD)
+ *   [1..2] ADC 原始值 (u16 大端, 12-bit)
+ *   [3]    Status  (0=error, 1=OK)
+ */
+static void APP_SendAdcResult(void)
+{
+    uint8_t buf[APP_ADC_RESULT_LEN];
+    /* 通道定义: 1=VO1(PB0/CH8), 2=VO2(PB1/CH9), 3=AMS5600(PA0/CH0), 4=VDD(PA1/CH1) */
+    static const uint32_t adc_ch[APP_ADC_RESULT_CHANNELS] = {
+        ADC_CH_ADC0, ADC_CH_ADC1, ADC_CH_ADC2, ADC_CH_ADC3
+    };
+    static const uint8_t adc_id[APP_ADC_RESULT_CHANNELS] = { 1, 2, 3, 4 };
+
+    for (uint8_t i = 0; i < APP_ADC_RESULT_CHANNELS; i++) {
+        ADC_Value_t v = BSP_ADC_ReadChannel(adc_ch[i], 4);
+        uint16_t raw = v.valid ? v.raw : 0;
+        uint8_t  st  = v.valid ? 1 : 0;
+        buf[i * 4 + 0] = adc_id[i];
+        buf[i * 4 + 1] = (uint8_t)(raw >> 8);
+        buf[i * 4 + 2] = (uint8_t)(raw & 0xFF);
+        buf[i * 4 + 3] = st;
+    }
+    APP_SendEvent(MGR_CMD_ADC_RESULT, buf, APP_ADC_RESULT_LEN);
+}
+
+/*===== 帧接收状态机 (ISR 上下文) =====
+ * 收完一整帧后置 frame_ready=1, 由 APP_Run 解析。
+ * LEN 严格按协议上限 FRAME_MAX_DATA (256) 卡死, 防止 PC 乱发巨型帧打爆缓冲区。
+ */
+static void APP_FrameFeed(uint8_t byte)
+{
+    switch (frame_pos) {
+    case 0:
+        if (byte == FRAME_HDR0) frame_buf[frame_pos++] = byte;
+        break;
+    case 1:
+        if (byte == FRAME_HDR1) frame_buf[frame_pos++] = byte;
+        else frame_pos = 0;
+        break;
+    case 2: case 3: case 4: case 5:
+        frame_buf[frame_pos++] = byte; break;
+    case 6:
+        frame_buf[6] = byte; frame_pos++; break;
+    case 7:
+        frame_buf[7] = byte;
+        frame_dlen = ((uint16_t)frame_buf[6] << 8) | byte;
+        if (frame_dlen > FRAME_MAX_DATA) { frame_pos = 0; break; }
+        frame_pos++;
+        if (frame_dlen == 0) frame_pos = 8;
+        break;
+    default:
+        if (frame_pos < 8 + frame_dlen)
+            frame_buf[frame_pos++] = byte;
+        else if (frame_pos == 8 + frame_dlen)
+            frame_buf[frame_pos++] = byte;  /* CRC LO */
+        else {
+            frame_buf[frame_pos++] = byte;  /* CRC HI */
+            frame_ready = 1;
+        }
+        break;
+    }
+}
+
+/*===== 固件数据写入 SPI Flash =====
+ * @return 0=成功, 非0=错误码 (APP_STATUS_ERR_OVERFLOW / APP_STATUS_ERR_FLASH)
+ * 边缘处理:
+ *   1) 写入前先比对 upload_count+len 是否超过 upload_total, 防止 PC 多发
+ *   2) GD25Q_WritePage 返回值检查, 失败立即停止并上报
+ *   3) 残页缓冲区写满后才提交到 Flash, 避免每字节都触发页编程
+ */
+static uint8_t UploadData(uint8_t *data, uint16_t len)
+{
+    if (upload_count + (uint32_t)len > upload_total)
+        return APP_STATUS_ERR_OVERFLOW;
+
+    for (uint16_t i = 0; i < len; i++) {
+        page_buf[page_idx++] = data[i];
+        upload_count++;
+        if (page_idx >= APP_PAGE_SIZE) {
+            if (!GD25Q_WritePage(page_buf, upload_addr, APP_PAGE_SIZE))
+                return APP_STATUS_ERR_FLASH;
+            upload_addr += APP_PAGE_SIZE;
+            page_idx = 0;
+        }
+    }
+    return APP_STATUS_OK;
+}
+
+/*===== PROGRAM (非阻塞状态机, 双固件: Bootloader→App) =====*/
+static void APP_ProgramStep(void)
+{
+    /* 当前段偏移和大小(在case内复用) */
+    static uint32_t prog_offset = 0;    /* 当前段内已烧录字节 */
+    static uint32_t cur_size    = 0;    /* 当前段总大小 */
+    static uint32_t cur_base    = 0;    /* 当前段在 Flash 的基地址 */
+    static uint32_t cur_target  = 0;    /* 当前段在 U4 的起始地址 */
+
+    switch (prog_step) {
+    case 0: /* 握手 */
+        if (ISP_Connect() != ISP_OK) {
+            uint8_t e = APP_STATUS_ERR_PROG; APP_SendAck(APP_CMD_PROGRAM, &e, 1);
+            app_state = APP_STATE_IDLE; prog_step = -1; APP_SetRGB(RGB_RED, 0); return;
+        }
+        prog_step = 1; return;
+
+    case 1: /* 全片擦除 */
+        if (ISP_MassErase() != ISP_OK) {
+            uint8_t e = APP_STATUS_ERR_PROG; APP_SendAck(APP_CMD_PROGRAM, &e, 1);
+            app_state = APP_STATE_IDLE; prog_step = -1; APP_SetRGB(RGB_RED, 0); return;
+        }
+        prog_offset = 0; prog_step = 2; return;
+
+    case 2: /* 烧录 Bootloader (prog_phase=0) */
+        prog_offset = 0;
+        cur_base    = FW_SLOT0_BASE;
+        cur_size    = prog_slotsize[0];
+        cur_target  = 0x08000000U;
+        prog_phase  = 0;
+        prog_step   = 10;   /* 跳到写循环 */
+        return;
+
+    case 3: /* 烧录 App (prog_phase=1) */
+        cur_base   = FW_SLOT1_BASE;
+        cur_size   = prog_slotsize[1];
+        cur_target = 0x08000000U + prog_slotsize[0];
+        prog_offset = 0;
+        prog_phase = 1;
+        prog_step  = 10;   /* 跳到写循环 */
+        return;
+
+    case 10: /* 逐页写入 (当前段) */
+        if (prog_offset < cur_size) {
+            uint16_t chunk = (cur_size - prog_offset >= APP_PAGE_SIZE)
+                           ? APP_PAGE_SIZE : (uint16_t)(cur_size - prog_offset);
+            uint8_t buf[APP_PAGE_SIZE];
+            GD25Q_ReadBuffer(buf, cur_base + FW_HEAD_SIZE + prog_offset, chunk);
+            if (ISP_WriteMemory(cur_target + prog_offset, buf, chunk) != ISP_OK) {
+                uint8_t e = APP_STATUS_ERR_PROG; APP_SendAck(APP_CMD_PROGRAM, &e, 1);
+                app_state = APP_STATE_IDLE; prog_step = -1; APP_SetRGB(RGB_RED, 0); return;
+            }
+            prog_offset += chunk;
+            return;
+        }
+        /* 当前段写完: Bootloader→跳case3烧App, App→跳case4复位 */
+        prog_step = (prog_phase == 0) ? 3 : 4;
+        return;
+
+    case 4: /* 跳转运行 */
+        ISP_Go(0x08000000);
+        { uint8_t ok = APP_STATUS_OK; APP_SendAck(APP_CMD_PROGRAM, &ok, 1); }
+        app_state = APP_STATE_IDLE; prog_step = -1; APP_SetRGB(RGB_GREEN, 0); return;
+    }
+}
+
+/*===== TEST (非阻塞状态机) =====*/
+static void APP_TestStep(void)
+{
+    int ret;
+    switch (test_step) {
+
+    /*── U4 连通 + 校准 ──*/
+    case 0:  APP_Print("[TEST] U4 Ping...\r\n");     test_step++; break;
+    case 1:
+        ret = U4_Ping();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL: U4 offline\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 2:  APP_Print("[TEST] U4 Zero Sensor...\r\n"); test_step++; break;
+    case 3:
+        ret = U4_ZeroSensor();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 4:  APP_Print("[TEST] U4 Start Calib...\r\n"); test_step++; break;
+    case 5:
+        ret = U4_StartCalib();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 6:  APP_Print("[TEST] U4 Finish Calib...\r\n"); test_step++; break;
+    case 7:
+        ret = U4_FinishCalib();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 8:  APP_Print("[TEST] U4 Read Flash Param...\r\n"); test_step++; break;
+    case 9:
+        ret = U4_ReadFlashParam();
+        if (ret == U4_PROTO_PENDING) break;
+        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        /* U4 在线时采集 4 路 ADC (VO1/VO2/AMS5600/VDD) 并以 CMD=0x0014 上报 */
+        if (test_mode == 0 || test_mode == 1) {
+            APP_Print("[TEST] ADC Channels (VO1/VO2/AMS5600/VDD)...\r\n");
+            APP_SendAdcResult();
+        }
+        test_step = (test_mode == 0) ? 10 : 20;
+        break;
+
+    /*── U7 测试 ──*/
+    case 10:
+        BSP_U7_Enable();
+        APP_Print("[TEST] U7 Ping...\r\n"); test_step++; break;
+    case 11:
+        ret = U7_Ping();
+        if (ret == U7_PROTO_PENDING) break;
+        if (ret != U7_PROTO_OK) { APP_Print("  FAIL: U7 offline\r\n"); test_fail = 1; }
+        else                     { APP_Print("  PASS\r\n"); }
+        test_step++; break;
+    case 12: APP_Print("[TEST] U7 Version...\r\n"); test_step++; break;
+    case 13: {
+        uint8_t maj, min;
+        ret = U7_GetVersion(&maj, &min);
+        if (ret == U7_PROTO_PENDING) break;
+        if (ret != U7_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else { char msg[32]; snprintf(msg, sizeof(msg), "  v%d.%d\r\n", maj, min); APP_Print(msg); }
+        test_step++; break;
+    }
+    case 14: APP_Print("[TEST] U7 SelfTest...\r\n"); test_step++; break;
+    case 15: {
+        uint8_t r;
+        ret = U7_SelfTest(&r);
+        if (ret == U7_PROTO_PENDING) break;
+        if (ret != U7_PROTO_OK || r != 0) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        else { APP_Print("  PASS\r\n"); }
+        test_step = 20; break;
+    }
+
+    /*── 结果 ──*/
+    case 20:
+        BSP_U7_Disable();
+        {
+            uint16_t result_cmd = (test_mode == 1) ? APP_CMD_TEST_U4
+                                : (test_mode == 2) ? APP_CMD_TEST_U7
+                                : APP_CMD_TEST_ALL;
+            if (test_fail) {
+                APP_Print("=== TEST RESULT: FAIL ===\r\n");
+                uint8_t e = APP_STATUS_ERR_TEST; APP_SendAck(result_cmd, &e, 1);
+                APP_SetRGB(RGB_RED, 0);
+            } else {
+                APP_Print("=== TEST RESULT: PASS ===\r\n");
+                uint8_t ok = APP_STATUS_OK; APP_SendAck(result_cmd, &ok, 1);
+                APP_SetRGB(RGB_GREEN, 0);
+            }
+        }
+        app_state = APP_STATE_IDLE; test_step = -1; break;
+
+    default: test_step = 20; break;
+    }
+}
+
+/*===== 帧命令分发 =====*/
+
+static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
+{
+    switch (cmd) {
+
+    /*──────────────────────────────────────────────────────
+     * 经理协议
+     *──────────────────────────────────────────────────────*/
+
+    /* 查询 U1 版本 */
+    case MGR_CMD_QUERY_U1_VER: {
+        uint8_t resp[3] = { 1, 0, 0 };          /* v1.0.0 */
+        APP_SendAck(MGR_CMD_QUERY_U1_VER, resp, 3);
+        break;
+    }
+
+    /* 查询 U7 版本: U1 向 U7 询问后回传 (非阻塞) */
+    case MGR_CMD_QUERY_U7_VER: {
+        uint8_t maj, min;
+        int ret = U7_GetVersion(&maj, &min);
+        if (ret == U7_PROTO_PENDING) {
+            deferred_cmd = MGR_CMD_QUERY_U7_VER;
+            break;
+        }
+        uint8_t resp[3];
+        if (ret == U7_PROTO_OK) {
+            resp[0] = 1; resp[1] = maj; resp[2] = min;
+        } else {
+            resp[0] = 0; resp[1] = 0; resp[2] = 0xFF;
+        }
+        APP_SendAck(MGR_CMD_QUERY_U7_VER, resp, 3);
+        break;
+    }
+
+    /* U4 固件上传 — 起始帧 (slot0=Bootloader, slot1=App)
+     * 新格式 (LEN=9):
+     *   [0..1] u16 总帧数 (大端)
+     *   [2..5] u32 文件大小 (大端)
+     *   [6..8] 3B  版本号 [主.次.修订]
+     */
+    case MGR_CMD_FW_START: {
+        if (app_state != APP_STATE_IDLE) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(MGR_CMD_FW_START, &e, 1); break;
+        }
+        if (len < 9) {
+            uint8_t e = APP_STATUS_ERR_SIZE; APP_SendAck(MGR_CMD_FW_START, &e, 1); break;
+        }
+        uint16_t frames = ((uint16_t)data[0] << 8) | data[1];
+        uint32_t bytes  = ((uint32_t)data[2] << 24) | ((uint32_t)data[3] << 16)
+                        | ((uint32_t)data[4] << 8)  |  (uint32_t)data[5];
+        if (bytes == 0 || bytes > FW_SLOT_SIZE - FW_HEAD_SIZE || frames == 0) {
+            uint8_t e = APP_STATUS_ERR_SIZE; APP_SendAck(MGR_CMD_FW_START, &e, 1); break;
+        }
+
+        /* 选择存储槽位, 计算基地址 */
+        uint32_t base = (upload_slot == 0) ? FW_SLOT0_BASE : FW_SLOT1_BASE;
+        upload_addr         = base + FW_HEAD_SIZE;     /* 数据从头部之后开始 */
+        upload_total        = bytes;
+        upload_count        = 0;
+        upload_total_frames = frames;
+        upload_data_frames  = 0;
+        upload_version[0]   = data[6];
+        upload_version[1]   = data[7];
+        upload_version[2]   = data[8];
+        page_idx            = 0;
+        upload_error        = 0;
+        upload_last_tick    = HAL_GetTick();
+
+        /* 擦除对应扇区 (头部 + 数据 + 余量) */
+        uint32_t sec_start = base / 4096;
+        uint32_t sec_count = (bytes + FW_HEAD_SIZE + 4095) / 4096;
+        for (uint32_t s = sec_start; s < sec_start + sec_count; s++)
+            GD25Q_EraseSector(s * 4096);
+
+        /* 写入头部 8B: [4B 大小 LE][3B 版本号][1B 完整标志=0x00 未完成] */
+        uint8_t hdr[FW_HEAD_SIZE];
+        hdr[0] = (uint8_t)(bytes);
+        hdr[1] = (uint8_t)(bytes >> 8);
+        hdr[2] = (uint8_t)(bytes >> 16);
+        hdr[3] = (uint8_t)(bytes >> 24);
+        hdr[4] = upload_version[0];
+        hdr[5] = upload_version[1];
+        hdr[6] = upload_version[2];
+        hdr[7] = FW_FLAG_INCOMPLETE;
+        if (!GD25Q_WritePage(hdr, base, FW_HEAD_SIZE)) {
+            uint8_t e = APP_STATUS_ERR_FLASH; APP_SendAck(MGR_CMD_FW_START, &e, 1); break;
+        }
+
+        app_state = APP_STATE_UPLOADING;
+        APP_SetRGB(RGB_BLUE, 2);
+        { uint8_t ok = APP_STATUS_OK; APP_SendAck(MGR_CMD_FW_START, &ok, 1); }
+        break;
+    }
+
+    /* U4 固件上传 — 数据帧 */
+    case MGR_CMD_FW_DATA: {
+        if (app_state != APP_STATE_UPLOADING) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(MGR_CMD_FW_DATA, &e, 1); break;
+        }
+        if (upload_error) {
+            /* 已出错, 拒绝继续写入, 仅回错误码 */
+            uint8_t e = upload_error; APP_SendAck(MGR_CMD_FW_DATA, &e, 1); break;
+        }
+        upload_last_tick = HAL_GetTick();
+        upload_data_frames++;
+        uint8_t r = UploadData(data, len);
+        if (r != APP_STATUS_OK) {
+            upload_error = r;
+            APP_SetRGB(RGB_RED, 0);
+        }
+        { uint8_t resp = (upload_error == 0) ? APP_STATUS_OK : upload_error;
+          APP_SendAck(MGR_CMD_FW_DATA, &resp, 1); }
+        break;
+    }
+
+    /* U4 固件上传 — 结束帧
+     * 收尾: 1) 残页刷入; 2) 比对字节数; 3) 写完整标志 (断电不丢失)
+     */
+    case MGR_CMD_FW_END: {
+        if (app_state != APP_STATE_UPLOADING) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(MGR_CMD_FW_END, &e, 1); break;
+        }
+
+        uint8_t  resp = APP_STATUS_OK;
+        uint32_t cur_slot = upload_slot;
+
+        /* 若上传中已出错, 直接回错误码, 不写完整标志 */
+        if (upload_error) {
+            resp = upload_error;
+        } else if (page_idx > 0) {
+            /* 残页刷入 */
+            if (!GD25Q_WritePage(page_buf, upload_addr, page_idx)) {
+                resp = APP_STATUS_ERR_FLASH;
+            }
+        }
+
+        /* 比对字节数: 仅在前面步骤都成功时检查, 否则保留原错误码 */
+        if (resp == APP_STATUS_OK && upload_count != upload_total) {
+            resp = APP_STATUS_ERR_COUNT;
+        }
+
+        /* 写完整标志 (仅在字节数匹配时) */
+        if (resp == APP_STATUS_OK) {
+            if (Flash_WriteCompleteFlag((uint8_t)cur_slot, FW_FLAG_COMPLETE) != 0)
+                resp = APP_STATUS_ERR_FLASH;
+        }
+
+        /* 切到下一个槽, 为第二次上传做准备 */
+        upload_slot = (upload_slot == 0) ? 1 : 0;
+
+        app_state = APP_STATE_IDLE;
+        APP_SetRGB((resp == APP_STATUS_OK) ? RGB_BLUE : RGB_RED, 1);
+        APP_SendAck(MGR_CMD_FW_END, &resp, 1);
+        break;
+    }
+
+    /* 查询固件版本: 从 SPI Flash 头部读取 (不依赖 U4 上电)
+     * ACK 4B: [1B 状态码][3B 版本号]
+     *   状态码 0x00=OK  0x06=无固件  0x07=固件不完整
+     * 优先返回 App 槽 (slot1); 若 App 槽空, 返回 Bootloader 槽 (slot0);
+     * 两槽都空时返回 NO_FW
+     */
+    case MGR_CMD_QUERY_FW_VER: {
+        uint8_t  slot   = 1;
+        uint32_t size   = 0;
+        uint8_t  ver[3] = {0};
+        uint8_t  flag   = FW_FLAG_INCOMPLETE;
+        Flash_ReadHead(slot, &size, ver, &flag);
+        if (size == 0 || size > FW_SLOT_SIZE - FW_HEAD_SIZE) {
+            /* App 槽无固件, 退回查 Bootloader 槽 */
+            slot = 0;
+            Flash_ReadHead(slot, &size, ver, &flag);
+        }
+        uint8_t resp[4];
+        if (size == 0 || size > FW_SLOT_SIZE - FW_HEAD_SIZE) {
+            resp[0] = APP_STATUS_ERR_NO_FW;
+            resp[1] = resp[2] = resp[3] = 0;
+        } else if (flag != FW_FLAG_COMPLETE) {
+            resp[0] = APP_STATUS_ERR_INCOMPLETE;
+            resp[1] = ver[0]; resp[2] = ver[1]; resp[3] = ver[2];
+        } else {
+            resp[0] = APP_STATUS_OK;
+            resp[1] = ver[0]; resp[2] = ver[1]; resp[3] = ver[2];
+        }
+        APP_SendAck(MGR_CMD_QUERY_FW_VER, resp, 4);
+        break;
+    }
+
+    /* 暂未实现 */
+    case MGR_CMD_U1_IAP_START:
+    case MGR_CMD_U1_IAP_DATA:
+    case MGR_CMD_U1_IAP_END:
+    case MGR_CMD_U7_IAP_START:
+    case MGR_CMD_U7_IAP_DATA:
+    case MGR_CMD_U7_IAP_END: {
+        uint8_t e = APP_STATUS_ERR_NIY; APP_SendAck(cmd, &e, 1); break;
+    }
+
+    /*──────────────────────────────────────────────────────
+     * 治具测试命令
+     *──────────────────────────────────────────────────────*/
+
+    case APP_CMD_PING: {
+        uint8_t ok = APP_STATUS_OK;
+        APP_SendAck(APP_CMD_PING, &ok, 1);
+        break;
+    }
+
+    case APP_CMD_PROGRAM: {
+        if (app_state != APP_STATE_IDLE) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(APP_CMD_PROGRAM, &e, 1); break;
+        }
+        /* 读两槽头部: [大小 版本 完整标志] */
+        uint8_t  ver0[3], ver1[3], flag0, flag1;
+        Flash_ReadHead(0, &prog_slotsize[0], ver0, &flag0);
+        Flash_ReadHead(1, &prog_slotsize[1], ver1, &flag1);
+
+        /* 优先检查"有无固件" */
+        if (prog_slotsize[0] == 0 || prog_slotsize[0] > FW_SLOT_SIZE - FW_HEAD_SIZE ||
+            prog_slotsize[1] == 0 || prog_slotsize[1] > FW_SLOT_SIZE - FW_HEAD_SIZE) {
+            uint8_t e = APP_STATUS_ERR_NO_FW; APP_SendAck(APP_CMD_PROGRAM, &e, 1); break;
+        }
+        /* 再检查"完整标志" */
+        if (flag0 != FW_FLAG_COMPLETE || flag1 != FW_FLAG_COMPLETE) {
+            uint8_t e = APP_STATUS_ERR_INCOMPLETE; APP_SendAck(APP_CMD_PROGRAM, &e, 1); break;
+        }
+        prog_phase = 0; prog_step = 0; app_state = APP_STATE_PROGRAMMING;
+        APP_SetRGB(RGB_YELLOW, 2);
+        break;
+    }
+
+    case APP_CMD_TEST_U4:
+        if (app_state != APP_STATE_IDLE) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(APP_CMD_TEST_U4, &e, 1); break;
+        }
+        test_step = 0; test_fail = 0; test_mode = 1;
+        app_state = APP_STATE_TESTING; APP_SetRGB(RGB_CYAN, 2);
+        break;
+
+    case APP_CMD_TEST_U7:
+        if (app_state != APP_STATE_IDLE) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(APP_CMD_TEST_U7, &e, 1); break;
+        }
+        test_step = 10; test_fail = 0; test_mode = 2;
+        app_state = APP_STATE_TESTING; APP_SetRGB(RGB_CYAN, 2);
+        break;
+
+    case APP_CMD_TEST_ALL:
+        if (app_state != APP_STATE_IDLE) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(APP_CMD_TEST_ALL, &e, 1); break;
+        }
+        test_step = 0; test_fail = 0; test_mode = 0;
+        app_state = APP_STATE_TESTING; APP_SetRGB(RGB_CYAN, 2);
+        break;
+
+    default: {
+        uint8_t e = APP_STATUS_ERR_NIY; APP_SendAck(cmd, &e, 1); break;
+    }
+    }
+}
+
+/*===== 公开 API =====*/
+
+void APP_Init(void)
+{
+    app_state   = APP_STATE_INIT;
+    frame_pos   = 0;
+    frame_ready = 0;
+    prog_step   = -1;
+    test_step   = -1;
+    upload_slot          = 0;
+    upload_count         = 0;
+    upload_total         = 0;
+    upload_total_frames  = 0;
+    upload_data_frames   = 0;
+    upload_error         = 0;
+    upload_last_tick     = 0;
+    page_idx             = 0;
+    last_seq             = 0;
+    seq_inited           = 0;
+    deferred_cmd         = 0;
+
+    APP_SetRGB(RGB_WHITE, 0);
+    APP_Print("\r\n=================================\r\n");
+    APP_Print("  U1 Jig System Ready\r\n");
+    APP_Print("=================================\r\n");
+    app_state = APP_STATE_IDLE;
+    APP_SetRGB(RGB_BLUE, 1);
+}
+
+void APP_Run(void)
+{
+    if (frame_ready) {
+        frame_ready = 0;
+        uint16_t cmd, len, seq;
+        uint8_t data[FRAME_MAX_DATA];
+        /* Frame_Parse 已做 CRC 校验, 失败代表帧错或 CRC 错 */
+        if (Frame_Parse(frame_buf, frame_pos, &cmd, &seq, data, &len)) {
+            /* 帧序号检测: seq != 0 时应 = last_seq + 1 (溢出回绕到 1)
+             * 不拒绝帧, 仅在 USB 端口打印警告便于 PC 调试 */
+            if (seq != 0) {
+                if (seq_inited) {
+                    uint16_t expect = (last_seq == 0xFFFF) ? 1 : (last_seq + 1);
+                    if (seq != expect) {
+                        char msg[64];
+                        snprintf(msg, sizeof(msg),
+                                 "[WARN] SEQ mismatch: expect=%u, got=%u\r\n",
+                                 expect, seq);
+                        APP_Print(msg);
+                    }
+                }
+                last_seq = seq;
+                seq_inited = 1;
+            }
+            pc_seq = seq;
+            APP_Dispatch(cmd, data, len);
+        } else {
+            /* CRC 错或帧长度异常: 因 SEQ 不可信, 无法回标准 ACK, 仅记录诊断信息 */
+            APP_Print("[WARN] Frame CRC/length error, dropped\r\n");
+        }
+        frame_pos = 0;
+    }
+
+    APP_RGB_Update();
+
+    /* 非阻塞协议状态机推进 */
+    U7_Proto_Run();
+    U4_Proto_Run();
+
+    /* 延迟 ACK: 仅保留 U7 版本查询 (U4 版本查询改为读 Flash, 无需延迟) */
+    if (deferred_cmd == MGR_CMD_QUERY_U7_VER) {
+        uint8_t maj, min;
+        int ret = U7_GetVersion(&maj, &min);
+        if (ret != U7_PROTO_PENDING) {
+            uint8_t resp[3];
+            if (ret == U7_PROTO_OK) {
+                resp[0] = 1; resp[1] = maj; resp[2] = min;
+            } else {
+                resp[0] = 0; resp[1] = 0; resp[2] = 0xFF;
+            }
+            APP_SendAck(MGR_CMD_QUERY_U7_VER, resp, 3);
+            deferred_cmd = 0;
+        }
+    }
+
+    /* 上传超时: 10s 无新数据, 回 IDLE 并上报错误
+     * 注意: 若 upload_error 已被设置 (溢出/写Flash失败), 不再覆盖为 TIMEOUT,
+     * 避免给 PC 发两次不同错误码造成混淆 */
+    if (app_state == APP_STATE_UPLOADING) {
+        if (HAL_GetTick() - upload_last_tick > APP_UPLOAD_TIMEOUT_MS) {
+            uint8_t e = upload_error ? upload_error : APP_STATUS_ERR_TIMEOUT;
+            app_state = APP_STATE_IDLE;
+            if (!upload_error) upload_error = APP_STATUS_ERR_TIMEOUT;
+            APP_SetRGB(RGB_RED, 0);
+            APP_SendAck(MGR_CMD_FW_DATA, &e, 1);
+            APP_Print("[ERROR] Upload timeout, aborted\r\n");
+        }
+    }
+
+    switch (app_state) {
+        case APP_STATE_PROGRAMMING: APP_ProgramStep(); break;
+        case APP_STATE_TESTING:     APP_TestStep();    break;
+        default: break;
+    }
+}
+
+void APP_USB_Receive(uint8_t *data, uint32_t len)
+{
+    for (uint32_t i = 0; i < len; i++) {
+        APP_FrameFeed(data[i]);
+    }
+}

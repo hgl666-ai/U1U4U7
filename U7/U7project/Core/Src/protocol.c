@@ -8,6 +8,25 @@
 
 extern UART_FIFO_t uart1_fifo;
 
+#ifdef U7_DEBUG
+/* 调试打印 (直接写 USART1->DR, 仅在定义 U7_DEBUG 时启用, 不污染正常协议帧) */
+static void motor_dbg_print(const char *s)
+{
+    while (*s) {
+        while (!(USART1->SR & USART_SR_TXE));
+        USART1->DR = (uint8_t)(*s++);
+    }
+}
+static void motor_dbg_print_u16(uint16_t v)
+{
+    char buf[6];
+    int8_t i = 5;
+    buf[i] = 0;
+    do { buf[--i] = (char)('0' + v % 10); v /= 10; } while (v > 0);
+    motor_dbg_print(&buf[i]);
+}
+#endif /* U7_DEBUG */
+
 /*===== 收帧状态机 (1B CMD: A5 5B + 1B CMD + 2B SEQ + 2B LEN + DATA + 2B CRC16) =====*/
 enum {
     S_HDR0, S_HDR1, S_CMD, S_SEQ_H, S_SEQ_L,
@@ -52,6 +71,9 @@ static void HandleGetVersion(void)
 static void HandleMotorStep(uint8_t *data, uint16_t len)
 {
     if (len < 4) {
+#ifdef U7_DEBUG
+        motor_dbg_print("STEP reject: len<4\r\n");
+#endif
         uint8_t e = PROTO_STATUS_ERROR;
         SendResponse(PROTO_CMD_MOTOR_STEP, &e, 1); return;
     }
@@ -59,15 +81,26 @@ static void HandleMotorStep(uint8_t *data, uint16_t len)
     uint8_t  dir   = data[1];
     uint16_t steps = ((uint16_t)data[2] << 8) | data[3];
     if (motor != MOTOR_ID || steps == 0) {
+#ifdef U7_DEBUG
+        motor_dbg_print("STEP reject: motor/step=0\r\n");
+#endif
         uint8_t e = PROTO_STATUS_ERROR;
         SendResponse(PROTO_CMD_MOTOR_STEP, &e, 1); return;
     }
     /* [2026-08-17] M7 修复: 电机运动中拒绝新指令时必须回错误,
      * 此前忽略指令却回 OK, U1 会误以为已执行 (开环定位累积误差) */
     if (!BSP_Motor_Move(dir, steps, MOTOR_SPEED_SLOW)) {
+#ifdef U7_DEBUG
+        motor_dbg_print("STEP reject: MOVE=0 (原因见 bsp_motor MOVE reject)\r\n");
+#endif
         uint8_t e = PROTO_STATUS_ERROR;
         SendResponse(PROTO_CMD_MOTOR_STEP, &e, 1); return;
     }
+#ifdef U7_DEBUG
+    motor_dbg_print("STEP ok, steps=");
+    motor_dbg_print_u16(steps);
+    motor_dbg_print("\r\n");
+#endif
     uint8_t ok = PROTO_STATUS_OK;
     SendResponse(PROTO_CMD_MOTOR_STEP, &ok, 1);
 }

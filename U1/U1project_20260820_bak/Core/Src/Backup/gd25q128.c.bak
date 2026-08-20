@@ -1,0 +1,142 @@
+#include "gd25q128.h"
+
+/* PA4 = SPI1_NSS, 但在此驱动中用作软件 CS */
+#define FLASH_CS_GPIO_Port  GPIOA
+#define FLASH_CS_Pin        GPIO_PIN_4
+#define CS_ENABLE()  HAL_GPIO_WritePin(FLASH_CS_GPIO_Port, FLASH_CS_Pin, GPIO_PIN_RESET)
+#define CS_DISABLE() HAL_GPIO_WritePin(FLASH_CS_GPIO_Port, FLASH_CS_Pin, GPIO_PIN_SET)
+
+/**
+  * @brief SPI底层收发一个字节
+  */
+uint8_t SPI1_SwapByte(uint8_t txData) {
+    uint8_t rxData = 0;
+    HAL_SPI_TransmitReceive(&hspi1, &txData, &rxData, 1, 1000);
+    return rxData;
+}
+
+/**
+  * @brief 读取芯片ID (正常返回 0xC817)
+  */
+uint16_t GD25Q_ReadID(void) {
+    uint16_t temp = 0;
+    CS_ENABLE();
+    SPI1_SwapByte(GD25Q_DeviceID_Cmd);
+    SPI1_SwapByte(0x00);
+    SPI1_SwapByte(0x00);
+    SPI1_SwapByte(0x00);
+    temp = SPI1_SwapByte(0xFF) << 8;
+    temp |= SPI1_SwapByte(0xFF);
+    CS_DISABLE();
+    return temp;
+}
+
+/**
+  * @brief 自测: 读 Flash ID, 期望 0xC817
+  * @retval 1=通过, 0=失败
+  */
+uint8_t GD25Q_Test(void)
+{
+    return (GD25Q_ReadID() == 0xC817) ? 1 : 0;
+}
+
+/**
+  * @brief 写使能 (每次擦除和写入前必须调用)
+  */
+void GD25Q_WriteEnable(void) {
+    CS_ENABLE();
+    SPI1_SwapByte(GD25Q_WriteEnable_Cmd);
+    CS_DISABLE();
+}
+
+/**
+  * @brief 等待空闲 (查询状态寄存器的 WIP 位)
+  */
+uint8_t GD25Q_WaitForWriteEnd(void) {
+    uint8_t status = 0;
+    uint32_t tickstart = HAL_GetTick();
+    CS_ENABLE();
+    SPI1_SwapByte(GD25Q_ReadStatusReg1_Cmd);
+    do {
+        status = SPI1_SwapByte(0xFF);
+        if ((HAL_GetTick() - tickstart) > 500) {
+            CS_DISABLE();
+            return 0;  /* 超时失败 */
+        }
+    } while ((status & 0x01) == 0x01); // 等待 WIP(Write In Progress) 标志位清零
+    CS_DISABLE();
+    return 1;  /* 成功 */
+}
+
+/**
+  * @brief 擦除指定扇区
+  * @param SectorAddr: 扇区起始地址
+  */
+uint8_t GD25Q_EraseSector(uint32_t SectorAddr) {
+    uint8_t ok;
+
+    GD25Q_WriteEnable();
+    ok = GD25Q_WaitForWriteEnd();
+    if (!ok) return 0;
+
+    CS_ENABLE();
+    SPI1_SwapByte(GD25Q_SectorErase_Cmd);
+    SPI1_SwapByte((uint8_t)((SectorAddr) >> 16));
+    SPI1_SwapByte((uint8_t)((SectorAddr) >> 8));
+    SPI1_SwapByte((uint8_t)SectorAddr);
+    CS_DISABLE();
+
+    return GD25Q_WaitForWriteEnd(); // 等待物理擦除动作完成
+}
+
+/**
+  * @brief 按页写入数据 
+  * @param pBuffer: 数据源指针
+  * @param WriteAddr: 写入起始地址
+  * @param NumByteToWrite: 写入字节数 
+  */
+uint8_t GD25Q_WritePage(uint8_t* pBuffer, uint32_t WriteAddr, uint16_t NumByteToWrite) {
+    uint8_t ok;
+
+    // 防止跨页写入：裁剪长度使其不超出当前 256 字节页边界
+    uint16_t max_bytes = 256 - (WriteAddr & 0xFF);
+    if (NumByteToWrite > max_bytes) {
+        NumByteToWrite = max_bytes;
+    }
+
+    GD25Q_WriteEnable();
+    ok = GD25Q_WaitForWriteEnd();
+    if (!ok) return 0;
+
+    CS_ENABLE();
+    SPI1_SwapByte(GD25Q_PageProgram_Cmd);
+    SPI1_SwapByte((uint8_t)((WriteAddr) >> 16));
+    SPI1_SwapByte((uint8_t)((WriteAddr) >> 8));
+    SPI1_SwapByte((uint8_t)WriteAddr);
+
+    for (uint16_t i = 0; i < NumByteToWrite; i++) {
+        SPI1_SwapByte(pBuffer[i]);
+    }
+    CS_DISABLE();
+
+    return GD25Q_WaitForWriteEnd();
+}
+
+/**
+  * @brief 连续读取任意长度数据
+  * @param pBuffer: 存放读取数据的指针
+  * @param ReadAddr: 读取起始地址
+  * @param NumByteToRead: 读取字节数
+  */
+void GD25Q_ReadBuffer(uint8_t* pBuffer, uint32_t ReadAddr, uint16_t NumByteToRead) {
+    CS_ENABLE();
+    SPI1_SwapByte(GD25Q_ReadData_Cmd);
+    SPI1_SwapByte((uint8_t)((ReadAddr) >> 16));
+    SPI1_SwapByte((uint8_t)((ReadAddr) >> 8));
+    SPI1_SwapByte((uint8_t)ReadAddr);
+
+    for (uint16_t i = 0; i < NumByteToRead; i++) {
+        pBuffer[i] = SPI1_SwapByte(0xFF);
+    }
+    CS_DISABLE();
+}
