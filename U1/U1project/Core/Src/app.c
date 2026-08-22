@@ -46,6 +46,24 @@ static uint16_t deferred_seq    = 0;
 static uint32_t deferred_tick   = 0;
 static uint8_t  deferred_target = 0;
 
+/*===== 电机回零 + 定点移动 [2026-08-20] =====
+ * motor_pos: 当前位置 (微步, 回零后=0, U1 侧累计, 开环)
+ * seq_phase: 0=idle 1=HOME 2=MOVE 3=WAIT 4=DONE
+ * 定点序列: 回零 → 1mm → 1.5mm → 2mm (换算 = um×3200/15500)
+ * 方向: 回零以 CW 顶到 IN1 限位端点, 定点移动反向 (CCW) 进入行程区
+ *       (与 U7 MOTOR_HOME_DIR=CW 配套, 2026-08-22 修正) */
+static int32_t  motor_pos = 0;
+static uint8_t  seq_phase = 0;
+static uint8_t  seq_step  = 0;
+static uint8_t  seq_fail  = 0;
+static uint32_t seq_deadline = 0;
+static const uint16_t seq_target_um[3] = {1000, 1500, 2000};
+
+/* 前置原型 (C90: 调用点位于定义之前, 无原型会隐式声明为 int 导致 #159) */
+static uint8_t  MotorSeq_IsBusy(void);
+static uint8_t  MotorSeq_Start(void);
+static void     MotorSeq_Run(void);
+
 /*===== LED =====*/
 void APP_SetRGB(RGB_Color_t color, uint8_t blinking)
 {
@@ -100,6 +118,13 @@ static void APP_PrintU16(uint16_t v)
     b[i] = 0;
     do { b[--i] = (char)('0' + v % 10); v /= 10; } while (v > 0);
     APP_Print(&b[i]);
+}
+
+/* TEST 单项结果打印: ok=1 PASS / ok=0 FAIL (合并 10 处重复块, 省 Flash) */
+static void APP_TestResult(uint8_t ok)
+{
+    if (ok) APP_Print("  PASS\r\n");
+    else  { APP_Print("  FAIL\r\n"); test_fail = 1; }
 }
 
 /* ACK 帧: SEQ 回显请求序号 */
@@ -265,66 +290,58 @@ static void APP_TestStep(void)
     switch (test_step) {
 
     /*── U4 命令测试 (0x10-0x16, 0x20) ──*/
-    case 0:  APP_Print("[TEST] U4 Zero Sensor(0x10)...\r\n"); test_step++; break;
+    case 0:  APP_Print("[TEST] 0x10\r\n"); test_step++; break;
     case 1:
         ret = U4_ZeroSensor();
         if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 2:  APP_Print("[TEST] U4 Start Calib(0x11)...\r\n"); test_step++; break;
+    case 2:  APP_Print("[TEST] 0x11\r\n"); test_step++; break;
     case 3:
         ret = U4_StartCalib();
         if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 4:  APP_Print("[TEST] U4 Finish Calib(0x12)...\r\n"); test_step++; break;
+    case 4:  APP_Print("[TEST] 0x12\r\n"); test_step++; break;
     case 5:
         ret = U4_FinishCalib();
         if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 6:  APP_Print("[TEST] U4 Cancel Calib(0x13)...\r\n"); test_step++; break;
+    case 6:  APP_Print("[TEST] 0x13\r\n"); test_step++; break;
     case 7:
         ret = U4_CancelCalib();
         if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 8:  APP_Print("[TEST] U4 Read Flash Param(0x14)...\r\n"); test_step++; break;
+    case 8:  APP_Print("[TEST] 0x14\r\n"); test_step++; break;
     case 9:
         ret = U4_ReadFlashParam();
         if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 10: APP_Print("[TEST] U4 Save Flash Param(0x15)...\r\n"); test_step++; break;
+    case 10: APP_Print("[TEST] 0x15\r\n"); test_step++; break;
     case 11:
         ret = U4_SaveFlashParam();
         if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 12: APP_Print("[TEST] U4 Factory Reset(0x16)...\r\n"); test_step++; break;
+    case 12: APP_Print("[TEST] 0x16\r\n"); test_step++; break;
     case 13:
         ret = U4_FactoryReset();
         if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 14: APP_Print("[TEST] U4 AMS Zero(0x20)...\r\n"); test_step++; break;
+    case 14: APP_Print("[TEST] 0x20\r\n"); test_step++; break;
     case 15:
         ret = U4_AmsZero();
         if (ret == U4_PROTO_PENDING) break;
-        if (ret != U4_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
     case 16:
         /* U4 在线时采集 4 路 ADC (VO1/VO2/AMS5600/VDD) 并以 CMD=0x0014 上报 */
         if (test_mode == 0 || test_mode == 1) {
-            APP_Print("[TEST] ADC Channels (VO1/VO2/AMS5600/VDD)...\r\n");
+            APP_Print("[TEST] ADC\r\n");
             APP_SendAdcResult();
         }
         test_step = (test_mode == 0) ? 17 : 23;
@@ -333,29 +350,28 @@ static void APP_TestStep(void)
     /*── U7 测试 ──*/
     case 17:
         BSP_U7_Enable();
-        APP_Print("[TEST] U7 Ping...\r\n"); test_step++; break;
+        APP_Print("[TEST] U7Ping\r\n"); test_step++; break;
     case 18:
         ret = U7_Ping();
         if (ret == U7_PROTO_PENDING) break;
         if (ret != U7_PROTO_OK) { APP_Print("  FAIL: U7 offline\r\n"); test_fail = 1; }
         else                     { APP_Print("  PASS\r\n"); }
         test_step++; break;
-    case 19: APP_Print("[TEST] U7 Version...\r\n"); test_step++; break;
+    case 19: APP_Print("[TEST] U7Ver\r\n"); test_step++; break;
     case 20: {
         uint8_t maj, min;
         ret = U7_GetVersion(&maj, &min);
         if (ret == U7_PROTO_PENDING) break;
-        if (ret != U7_PROTO_OK) { APP_Print("  FAIL\r\n"); test_fail = 1; }
+        if (ret != U7_PROTO_OK) { APP_TestResult(0); }
         else { APP_Print("  v"); APP_PrintU16(maj); APP_Print("."); APP_PrintU16(min); APP_Print("\r\n"); }
         test_step++; break;
     }
-    case 21: APP_Print("[TEST] U7 SelfTest...\r\n"); test_step++; break;
+    case 21: APP_Print("[TEST] U7Self\r\n"); test_step++; break;
     case 22: {
         uint8_t r;
         ret = U7_SelfTest(&r);
         if (ret == U7_PROTO_PENDING) break;
-        if (ret != U7_PROTO_OK || r != 0) { APP_Print("  FAIL\r\n"); test_fail = 1; }
-        else { APP_Print("  PASS\r\n"); }
+        APP_TestResult((ret == U7_PROTO_OK) && (r == 0));
         test_step = 23; break;
     }
 
@@ -560,6 +576,35 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         break;  /* 不立即 ACK, 由 DiamCalib_Run 异步完成 */
     }
 
+    /* [2026-08-20] 电机回零: 转发 U7 0x29, 复用 deferred 机制非阻塞回 ACK */
+    case MGR_CMD_MOTOR_HOME: {
+        int ret;
+        uint8_t e;
+        if (MotorSeq_IsBusy() || deferred_cmd != 0 || app_state != APP_STATE_IDLE) {
+            e = APP_STATUS_BUSY; APP_SendAck(cmd, &e, 1); break;
+        }
+        ret = U7_Home();
+        if (ret == U7_PROTO_PENDING) {
+            deferred_cmd = MGR_CMD_MOTOR_HOME;
+            break;
+        }
+        e = (ret == U7_PROTO_OK) ? APP_STATUS_OK : APP_STATUS_ERR_TIMEOUT;
+        if (ret == U7_PROTO_OK) motor_pos = 0;
+        APP_SendAck(cmd, &e, 1);
+        break;
+    }
+
+    /* [2026-08-20] 定点移动序列: 回零 → 1mm → 1.5mm → 2mm */
+    case MGR_CMD_MOTOR_SEQ: {
+        if (deferred_cmd != 0 || app_state != APP_STATE_IDLE) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(cmd, &e, 1); break;
+        }
+        if (MotorSeq_Start() != 0) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(cmd, &e, 1);
+        }
+        break;  /* 不立即 ACK, 由 MotorSeq_Run 异步完成 */
+    }
+
     /*──────────────────────────────────────────────────────
      * 治具测试命令
      *──────────────────────────────────────────────────────*/
@@ -648,11 +693,83 @@ void APP_Init(void)
     SN_Report_Init();
 
     APP_SetRGB(RGB_WHITE, 0);
-    APP_Print("\r\n=================================\r\n");
-    APP_Print("  U1 Jig System Ready\r\n");
-    APP_Print("=================================\r\n");
+    APP_Print("\r\n== U1 Jig Ready ==\r\n");
     app_state = APP_STATE_IDLE;
     APP_SetRGB(RGB_BLUE, 1);
+}
+
+/*===== 电机定点移动序列 [2026-08-20] =====
+ * 0x0013: 回零 → 移动到 1mm → 1.5mm → 2mm (换算 = um×3200/15500)
+ * 每段: U7_MotorStep 增量移动 + 动态到位等待 (低速三角退化 ≈2ms/步 + 500ms 余量) */
+
+static uint16_t MotorSeq_StepsFor(uint16_t um)
+{
+    return (uint16_t)((uint32_t)um * DIAM_CALIB_STEPS_PER_REV
+                      / DIAM_CALIB_OUTPUT_CIRC_UM);
+}
+
+static uint8_t MotorSeq_IsBusy(void)
+{
+    return seq_phase != 0;
+}
+
+static uint8_t MotorSeq_Start(void)
+{
+    if (seq_phase != 0) return 1;   /* BUSY */
+    seq_phase = 1;                  /* HOME */
+    seq_step  = 0;
+    seq_fail  = 0;
+    return 0;
+}
+
+static void MotorSeq_Run(void)
+{
+    if (seq_phase == 0) return;
+
+    /*── HOME: 回零 ──*/
+    if (seq_phase == 1) {
+        int ret = U7_Home();
+        if (ret == U7_PROTO_PENDING) return;
+        if (ret != U7_PROTO_OK) { seq_fail = 1; seq_phase = 4; return; }
+        motor_pos = 0;
+        seq_phase = 2;
+        return;
+    }
+
+    /*── MOVE: 计算增量并启动移动 ──*/
+    if (seq_phase == 2) {
+        int32_t target;
+        int32_t delta;
+        int ret;
+        target = (int32_t)MotorSeq_StepsFor(seq_target_um[seq_step]);
+        delta  = target - motor_pos;
+        if (delta <= 0) { seq_fail = 1; seq_phase = 4; return; }   /* 方向/位置异常 */
+        /* [2026-08-22] 方向修正: 回零以 CW 顶到 IN1 限位端点, 定点移动必须反向 (CCW)
+         * 进入行程区; 原用 CW 会继续顶限位 → 电机失步/物理不动 (表现为"只走两段") */
+        ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, U7_MOTOR_CCW, (uint16_t)delta);
+        if (ret == U7_PROTO_PENDING) return;
+        if (ret != U7_PROTO_OK) { seq_fail = 1; seq_phase = 4; return; }
+        seq_deadline = HAL_GetTick() + 500U + (uint32_t)delta * 2U;  /* ≈2ms/步 低速 */
+        seq_phase = 3;
+        return;
+    }
+
+    /*── WAIT: 等电机物理到位 ──*/
+    if (seq_phase == 3) {
+        if (HAL_GetTick() < seq_deadline) return;
+        motor_pos = (int32_t)MotorSeq_StepsFor(seq_target_um[seq_step]);
+        seq_step++;
+        if (seq_step < 3) { seq_phase = 2; }
+        else              { seq_phase = 4; }
+        return;
+    }
+
+    /*── DONE: 汇总 ACK ──*/
+    if (seq_phase == 4) {
+        uint8_t e = seq_fail ? APP_STATUS_ERR_TEST : APP_STATUS_OK;
+        APP_SendAck(MGR_CMD_MOTOR_SEQ, &e, 1);
+        seq_phase = 0;
+    }
 }
 
 void APP_Run(void)
@@ -665,33 +782,25 @@ void APP_Run(void)
         /* Frame_Parse 已做 CRC 校验, 失败代表帧错或 CRC 错 */
         if (Frame_Parse(fb, f_len, &cmd, &seq, data, &len)) {
             /* 帧序号检测: seq != 0 时应 = last_seq + 1 (溢出回绕到 1)
-             * 不拒绝帧, 仅在 USB 端口打印警告便于 PC 调试 */
+             * 不拒绝帧 (旧固件行为), 序号仅用于 ACK 回显 */
             if (seq != 0) {
                 if (seq_inited) {
                     uint16_t expect = (last_seq == 0xFFFF) ? 1 : (last_seq + 1);
-                    if (seq != expect) {
-                        APP_Print("[WARN] SEQ mismatch: expect=");
-                        APP_PrintU16(expect);
-                        APP_Print(", got=");
-                        APP_PrintU16(seq);
-                        APP_Print("\r\n");
-                    }
+                    if (seq != expect) { /* 仅更新基线, 不打印 (省 Flash) */ }
                 }
                 last_seq = seq;
                 seq_inited = 1;
             }
             pc_seq = seq;
             APP_Dispatch(cmd, data, len);
-        } else {
-            /* CRC 错或帧长度异常: 因 SEQ 不可信, 无法回标准 ACK, 仅记录诊断信息 */
-            APP_Print("[WARN] Frame CRC/length error, dropped\r\n");
         }
+        /* CRC 错或帧长度异常: 因 SEQ 不可信, 无法回标准 ACK, 直接丢弃 */
     }
 
     APP_RGB_Update();
 
-    /* 诊断: 每3秒自动U7 PING (校准时跳过, 避免与电机控制冲突) */
-    if (!ADC_Calib_IsBusy() && !DiamCalib_IsBusy()) {
+    /* 诊断: 每3秒自动U7 PING (校准/回零/deferred 进行时跳过, 避免与电机控制冲突) */
+    if (!ADC_Calib_IsBusy() && !DiamCalib_IsBusy() && !MotorSeq_IsBusy() && deferred_cmd == 0) {
         static uint32_t pt = 0; static uint8_t ps = 0;
         if (HAL_GetTick() - pt > 3000 && ps == 0) { U7_Ping(); pt = HAL_GetTick(); ps = 1; }
         if (ps == 1) { int r = U7_Ping(); if (r != U7_PROTO_PENDING) { ps = 0; } }
@@ -710,6 +819,9 @@ void APP_Run(void)
     /* 测径精度校准非阻塞推进 (CMD 0x0011) */
     DiamCalib_Run();
 
+    /* [2026-08-20] 定点移动序列非阻塞推进 (CMD 0x0013) */
+    MotorSeq_Run();
+
     /* 延迟 ACK: U7/U4 版本查询需要等待对方回复 */
     if (deferred_cmd == MGR_CMD_QUERY_U7_VER) {
         uint8_t maj, min;
@@ -722,6 +834,15 @@ void APP_Run(void)
                 resp[0] = 0; resp[1] = 0; resp[2] = 0xFF;
             }
             APP_SendAck(MGR_CMD_QUERY_U7_VER, resp, 3);
+            deferred_cmd = 0;
+        }
+    } else if (deferred_cmd == MGR_CMD_MOTOR_HOME) {
+        /* [2026-08-20] 回零结果: U7 完成回零后回 1B 状态 */
+        int ret = U7_Home();
+        if (ret != U7_PROTO_PENDING) {
+            uint8_t e = (ret == U7_PROTO_OK) ? APP_STATUS_OK : APP_STATUS_ERR_TIMEOUT;
+            if (ret == U7_PROTO_OK) motor_pos = 0;
+            APP_SendAck(MGR_CMD_MOTOR_HOME, &e, 1);
             deferred_cmd = 0;
         }
     } else if (deferred_cmd == MGR_CMD_QUERY_U4_VER) {

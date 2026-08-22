@@ -112,32 +112,3 @@ void BSP_RGB_Set(uint8_t r, uint8_t g, uint8_t b)
     HAL_GPIO_WritePin(LED_B_Port, LED_B_Pin, b ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
-/* BSP_OUT_Set 已删除 — OUT0/1/4/5 全部改为 ADC 输入，不再有 GPIO 输出功能 */
-
-/**
-  * @brief  自测: 依次点亮 RGB 三色和系统 LED, 各亮 500ms
-  * @retval 1=通过
-  * @note   目视确认各 LED 依次闪烁即可
-  */
-uint8_t BSP_GPIO_Test(void)
-{
-    /* 红灯亮 500ms */
-    BSP_RGB_Set(1, 0, 0);
-    HAL_Delay(500);
-
-    /* 绿灯亮 500ms */
-    BSP_RGB_Set(0, 1, 0);
-    HAL_Delay(500);
-
-    /* 蓝灯亮 500ms */
-    BSP_RGB_Set(0, 0, 1);
-    HAL_Delay(500);
-
-    /* 全灭, 系统 LED 亮 500ms */
-    BSP_RGB_Set(0, 0, 0);
-    BSP_SysLED_On();
-    HAL_Delay(500);
-    BSP_SysLED_Off();
-
-    return 1;   /* GPIO 无硬件反馈, 目视确认 */
-}

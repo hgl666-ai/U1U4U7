@@ -214,7 +214,6 @@ void FwUpload_TimeoutCheck(void)
         app_state = APP_STATE_IDLE;
         if (!upload_error) upload_error = APP_STATUS_ERR_TIMEOUT;
         APP_SetRGB(RGB_RED, 0);
-        APP_SendAck(MGR_CMD_FW_DATA, &e, 1);
-        APP_Print("[ERROR] Upload timeout, aborted\r\n");
+        APP_SendAck(MGR_CMD_FW_DATA, &e, 1);   /* 错误码经 ACK 回传, 无需额外打印 */
     }
 }

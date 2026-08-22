@@ -13,6 +13,14 @@ static volatile uint32_t motor_target;   /* 目标步数 */
 static volatile uint32_t motor_count;    /* 已走步数 */
 static volatile uint8_t  motor_busy;     /* 1=运动中 */
 
+/* 回零状态 [2026-08-20] */
+static volatile uint8_t  home_active;    /* 1=回零进行中 (ISR 每步检测限位) */
+static volatile uint8_t  home_done;      /* 1=已到零点 (IN1 触发) */
+static volatile uint8_t  home_fail;      /* 1=失败 (超时 / 撞 IN2 / 启动失败) */
+static volatile uint8_t  home_skip;      /* 启动保护: 前 N 步不检测限位 (防启动毛刺误判) */
+static volatile uint8_t  home_in1_cnt;   /* IN1 连续触发计数 (去抖) */
+static volatile uint8_t  home_in2_cnt;   /* IN2 连续触发计数 (去抖) */
+
 /*===== 梯形加减速状态 [2026-08-19] =====
  * 丢步修复: 直接以目标频率硬启动/硬停 → 平滑起步/减速到位。
  * 全程在 ARR 域线性 (f = 32MHz/(ARR+1)), 加减速即 ARR 均匀增减, ISR 内无除法。
@@ -29,7 +37,7 @@ static uint16_t ramp_decel_steps;           /* 剩余 ≤ 该值进入减速 */
 static uint8_t  ramp_tier_cnt;              /* 分档计数器 */
 static uint8_t  ramp_armed;                 /* 1=启用加减速 (小步数/无差量时禁用) */
 
-#ifdef U7_DEBUG
+#if U7_DEBUG
 static void motor_print(const char *s);   /* 前向声明: 调试打印 (定义见文件尾部) */
 #define MOVE_DBG(s) motor_print(s)
 #else
@@ -57,6 +65,12 @@ void BSP_Motor_Init(void)
     motor_target = 0;
     motor_count  = 0;
     motor_busy   = 0;
+    home_active  = 0;
+    home_done    = 0;
+    home_fail    = 0;
+    home_skip    = 0;
+    home_in1_cnt = 0;
+    home_in2_cnt = 0;
     ramp_state   = RAMP_CRUISE;
     ramp_armed   = 0;
 }
@@ -163,6 +177,45 @@ uint8_t BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
     return 1;
 }
 
+/*===== 回零 [2026-08-20] =====
+ * 启动后由 ISR 每步检测限位: IN1(PB9) 高电平 = 零点 → home_done;
+ * IN2(PB10) 高电平 = 撞对侧 → home_fail; 走到 HOME_MAX_STEPS 未触发 → home_fail。
+ * [2026-08-20 16:1x] ★触发电平修复: 原注释/实现为"低电平触发", 实际硬件为
+ * NOPULL+外部下拉, 触发=高电平 (计划确认"限位触发变高")。
+ */
+static void motor_halt(void)
+{
+    TIM3->DIER &= ~TIM_DIER_UIE;     /* ① 先断中断源 */
+    TIM3->CCER &= ~TIM_CCER_CC2E;    /* ② 再关输出 (STEP 释放) */
+    TIM3->CR1  &= ~TIM_CR1_CEN;      /* ③ 最后停计数 */
+    TIM_CHANNEL_STATE_SET(&htim3, TIM_CHANNEL_2, HAL_TIM_CHANNEL_STATE_READY);
+    htim3.State = HAL_TIM_STATE_READY;
+    motor_busy  = 0;
+}
+
+void BSP_Motor_Home(void)
+{
+    home_active = 1; home_done = 0; home_fail = 0;
+    /* [2026-08-20] 启动保护: 前 HOME_SKIP_FIRST 步不检测限位 (电荷泵建立/电平稳定),
+     * 防启动瞬间引脚毛刺误判"已触发" → 电机只走 1 步就停 (实测现象) */
+    home_skip = MOTOR_HOME_SKIP_FIRST;
+    home_in1_cnt = 0; home_in2_cnt = 0;
+    /* freq=500Hz(==F_START) → delta=0 → 无加减速, 全程低速直跑找零点 */
+    if (!BSP_Motor_Move(MOTOR_HOME_DIR, MOTOR_HOME_MAX_STEPS, MOTOR_HOME_SPEED_HZ)) {
+        home_active = 0; home_fail = 1;   /* 启动被拒 (busy/参数) → 失败 */
+    }
+}
+
+uint8_t BSP_Motor_HomeDone(void)
+{
+    return home_done;
+}
+
+uint8_t BSP_Motor_HomeFail(void)
+{
+    return home_fail;
+}
+
 /**
   * @brief  急停电机 (唯一脱机入口: EN 拉高失去保持力矩)
   * @note   [2026-08-19] 到位保持力矩后, 上层确认不再需要保持位置时调用本函数脱机
@@ -174,6 +227,7 @@ void BSP_Motor_Stop(void)
     motor_busy   = 0;
     motor_target = 0;
     motor_count  = 0;
+    home_active  = 0;                    /* 急停终止回零 */
     ramp_armed   = 0;
     ramp_state   = RAMP_CRUISE;
 }
@@ -207,11 +261,34 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     motor_count++;
 
+    /*── [2026-08-20] 回零模式: 每步检测限位 (ISR 内读 GPIO ~1µs, 500Hz 下可接受) ──*/
+    if (home_active) {
+        if (home_skip > 0) { home_skip--; }          /* 启动保护: 前 N 步不检测 */
+        else {
+            /* [2026-08-20 17:3x] ★触发极性修正: 实测"HOME done(IN1)+电机不转" =
+             * 未触发时 IN1 读 1 (硬件外部上拉, 开关拉地=触发), 故触发判定为**低电平**。
+             * 此前按计划确认"触发变高"写成 !=0, 未触发即误判 → 电机几乎不动就回零成功。
+             * 加去抖: 连续 HOME_DEBOUNCE 步读到触发才确认 (防毛刺) */
+            if (BSP_IN_Read(1) == 0) {
+                if (++home_in1_cnt >= MOTOR_HOME_DEBOUNCE) {  /* IN1 低电平触发 = 到零点 */
+                    home_active = 0; home_done = 1;
+                    motor_halt();
+                    return;   /* [2026-08-21] ISR 内不打印 (阻塞 USART ~3ms 会丢脉冲) */
+                }
+            } else home_in1_cnt = 0;
+            if (BSP_IN_Read(2) == 0) {
+                if (++home_in2_cnt >= MOTOR_HOME_DEBOUNCE) {  /* IN2 低电平触发 = 撞对侧 */
+                    home_active = 0; home_fail = 1;
+                    motor_halt();
+                    return;   /* 同上 */
+                }
+            } else home_in2_cnt = 0;
+        }
+    }
+
     /*── 到位: 停 PWM, 保持 EN 低 (TMC 以 IHOLD 保持力矩) ──*/
     if (motor_count >= motor_target) {
-        TIM3->DIER &= ~TIM_DIER_UIE;     /* ① 先断中断源 */
-        TIM3->CCER &= ~TIM_CCER_CC2E;    /* ② 再关输出 (STEP 释放) */
-        TIM3->CR1  &= ~TIM_CR1_CEN;      /* ③ 最后停计数 */
+        if (home_active) { home_active = 0; home_fail = 1; }  /* 最大步数未触发 = 超时失败 */
         /* [2026-08-19 16:4x] ★最终根因（U7_DEBUG 实证 "MOVE reject: START_IT FAIL"）:
          * 本工程 HAL 为 v1.10+，HAL_TIM_PWM_Start_IT 检查的是**通道级状态**
          * TIM_CHANNEL_STATE_GET(ChannelState[])（非旧版 htim->State），不匹配则
@@ -219,11 +296,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
          * 寄存器停 PWM 未还原该状态 → 第二段 Start_IT 必然失败 → "START_IT FAIL"。
          * 必须同步还原 ChannelState（等价 HAL_TIM_PWM_Stop_IT 内部行为）。
          * 此前仅置 htim3.State=READY 不够（State 是新 HAL 的兼容遗留字段）。 */
-        TIM_CHANNEL_STATE_SET(&htim3, TIM_CHANNEL_2, HAL_TIM_CHANNEL_STATE_READY);
-        htim3.State = HAL_TIM_STATE_READY;   /* 顺带还原（兼容旧版 HAL 的 State 检查） */
-        MOVE_DBG("MOVE done (ISR reached target)\r\n");   /* U7_DEBUG: 确认 ISR 到位 */
-        motor_busy = 0;                  /* 不置 EN! 保持力矩 (脱机仅在 BSP_Motor_Stop) */
-        return;
+        motor_halt();                    /* 停 PWM + 还原 ChannelState/State + busy=0 */
+        return;                          /* [2026-08-21] ISR 内不打印 (阻塞 USART 丢脉冲) */
     }
 
     /*── 每步检查: 进入减速窗口 (加速中也可能触发 → 三角) ──*/
@@ -235,6 +309,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         switch (ramp_state) {
         case RAMP_ACCEL:
             ramp_arr -= ramp_step_a;
+            //防止超速（限幅）
             if (ramp_arr <= ramp_arr_apex) { ramp_arr = ramp_arr_apex; ramp_state = RAMP_CRUISE; }
             break;
         case RAMP_DECEL:

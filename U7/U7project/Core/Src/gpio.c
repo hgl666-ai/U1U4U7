@@ -85,8 +85,16 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PB10 PB11 PB9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_9;
+  /*Configure GPIO pins : PB9 PB10 (IN1/IN2 限位) — 内部上拉, 与外部上拉一致
+   * [2026-08-20 17:3x] ★极性实测修正: 未触发时 IN1 读 1 (硬件外部上拉+开关拉地),
+   * 触发=低电平。改 GPIO_PULLUP: 未触发稳定读 1, 触发(开关拉低)才读 0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* PB11 (U7_EN, 历史保留) */
+  GPIO_InitStruct.Pin = GPIO_PIN_11;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);

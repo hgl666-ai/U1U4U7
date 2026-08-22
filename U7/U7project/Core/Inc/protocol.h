@@ -15,6 +15,7 @@
 #define PROTO_CMD_SELF_TEST    0x26
 #define PROTO_CMD_RESET        0x27
 #define PROTO_CMD_GET_ADC      0x28
+#define PROTO_CMD_HOME         0x29   /* [2026-08-22] 电机回零: CW 正转找 IN1(PB9) 零点, 低电平触发, 阻塞≤6.4s */
 
 #define PROTO_DIR_CW    0x00
 #define PROTO_DIR_CCW   0x01

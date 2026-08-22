@@ -105,8 +105,9 @@ int main(void)
   USART1->CR1 |= USART_CR1_RE;
   BSP_ADC_Init();
 
-#ifdef U7_DEBUG
-  /* 诊断: 发送 USART1 寄存器值 */
+#if U7_TMC_PRINT
+  /* [2026-08-21] 归入 U7_TMC_PRINT (默认 0): 上电零输出, 防污染 U1 RX DMA。
+   * 诊断: 发送 USART1 寄存器值 + ADC 验证 (仅 USB-TTL 直连 U7 调试用) */
   {
       uint16_t cr1 = USART1->CR1, sr = USART1->SR;
       char hex[] = "0123456789ABCDEF";
@@ -127,7 +128,7 @@ int main(void)
       USART1->DR = '\n'; while(!(USART1->SR&USART_SR_TC));
   }
 
-  /* ADC 验证最先输出 */
+  /* ADC 验证输出 */
   {
       uint8_t ok; uint16_t r = BSP_ADC_ReadRaw(ADC_CH_ADC0, &ok);
       USART1->DR = '\r'; while(!(USART1->SR&USART_SR_TC));
@@ -140,13 +141,13 @@ int main(void)
       USART1->DR = '\r'; while(!(USART1->SR&USART_SR_TC));
       USART1->DR = '\n'; while(!(USART1->SR&USART_SR_TC));
   }
-#endif /* U7_DEBUG */
+#endif /* U7_TMC_PRINT */
 
   /* [2026-08-17] M6 修复: 恢复电机/TMC2209 初始化 (此前被注释, TMC 靠上电默认值运行,
    * 细分不确定; 此处按备份版本恢复: 检测到 TMC 在线则显式配置 16 细分等参数)
    * [2026-08-18] 排障开关: 若怀疑 TMC 初始化导致 U7 异常, 定义 U7_SKIP_TMC_CFG
    * 可跳过 (电机退化为 TMC 上电默认配置) */
-#ifdef U7_DEBUG
+#if U7_DEBUG
   /* [2026-08-19 15:5x] 诊断: 上电自动跑 TMC2209 完整自检
    * (通信/回环/地址扫描/写配置/读回验证/故障标志), 输出走 USART1(PA9),
    * 用 USB-TTL 监听即可判断 SetDefaults 是否真正写入成功 + 有无 S2G/OLA/OT 故障 */
@@ -154,14 +155,33 @@ int main(void)
 #endif /* U7_DEBUG */
 
 #ifndef U7_SKIP_TMC_CFG
-  BSP_TMC_Init();
-  if (BSP_TMC_IsAlive()) {
-      BSP_TMC_SetDefaults();   /* GCONF/IHOLD_IRUN/CHOPCONF(mres=4→16细分)/PWMCONF */
+  /* [2026-08-21] ★TMC 配置可靠性: IsAlive/SetDefaults 失败整轮重试 (最多 3 轮, 轮间 50ms)。
+   * 此前 IsAlive 失败或 SetDefaults 写入偶发失败(无验证)时, 微步在 16/8 之间漂移,
+   * 导致回零行程/定点位置/失步行为随机 (实测 3200 步有时=1圈有时=2圈)。 */
+  {
+      uint8_t tmc_cfg_ok = 0;
+      uint8_t i;
+      BSP_TMC_Init();
+      for (i = 0; i < 3 && !tmc_cfg_ok; i++) {
+          if (BSP_TMC_IsAlive()) {
+              tmc_cfg_ok = BSP_TMC_SetDefaults();   /* 内部每寄存器读回验证+重试 */
+          }
+          if (!tmc_cfg_ok) HAL_Delay(50);
+      }
+#if U7_TMC_PRINT
+      /* [2026-08-21] 包 U7_TMC_PRINT: 上电零输出, 防污染 U1 RX DMA (见 bsp_tmc2209.h 注释)。
+       * 打印配置结果: 成功=微步16/电流已生效; 失败=继续用硬件默认8微步, 位置换算将错2倍! */
+      {
+          const char *s = tmc_cfg_ok ? "TMC CFG OK (16ustep)\r\n"
+                                     : "TMC CFG FAIL (8ustep default!)\r\n";
+          while (*s) {
+              while (!(USART1->SR & USART_SR_TXE));
+              USART1->DR = (uint8_t)(*s++);
+          }
+      }
+#endif
+      BSP_TMC_Deinit();  /* 归还 TIM3 给电机 PWM */
   }
-  /* [2026-08-19] 修复: BSP_TMC_Init 已把 TIM3 切成 UART 模式 (自由计数),
-   * 必须归还给电机 PWM, 否则 TIM3 停在 ARR=0xFFFF/CC2E=0 状态,
-   * 后续 BSP_Motor_Move 虽然会重配, 但应显式恢复, 避免状态不一致 */
-  BSP_TMC_Deinit();
 #endif /* U7_SKIP_TMC_CFG */
   BSP_Motor_Init();
 

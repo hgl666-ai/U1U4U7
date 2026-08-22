@@ -254,6 +254,7 @@ static uint8_t uart_rx(uint8_t *byte, uint32_t timeout_ms)
  *================================================================*/
 static void tmc_print(const char *s);       /* 前向声明 */
 static void tmc_print_hex(uint32_t val, uint8_t nibbles);
+uint8_t BSP_TMC_ReadReg(uint8_t reg, uint32_t *val);  /* 前向声明 (WriteRegVerified 定义在其前) */
 
 static void raw_rx_monitor(uint32_t duration_ms)
 {
@@ -283,7 +284,11 @@ static void raw_rx_monitor(uint32_t duration_ms)
     tmc_print("us\r\n");
 }
 
-/*===== 调试串口输出 =====*/
+/*===== 调试串口输出 =====
+ * [2026-08-21] 全部包 U7_TMC_PRINT (默认 0): 关闭时零输出、零字符串占用,
+ * 避免上电 TMC 配置的 [DBG] 打印污染 U1 的 USART1 RX DMA (见 bsp_tmc2209.h 注释) */
+
+#if U7_TMC_PRINT
 
 static void tmc_print(const char *s)
 {
@@ -312,6 +317,15 @@ static void tmc_print_reg(const char *name, uint8_t reg, uint32_t val)
     tmc_print("] = 0x");
     tmc_print_hex(val, 8);
 }
+
+#else /* U7_TMC_PRINT=0: 空实现, 调用点零开销 */
+
+static void tmc_print(const char *s)             { (void)s; }
+static void tmc_print_hex(uint32_t val, uint8_t nibbles) { (void)val; (void)nibbles; }
+static void tmc_print_reg(const char *name, uint8_t reg, uint32_t val)
+{ (void)name; (void)reg; (void)val; }
+
+#endif /* U7_TMC_PRINT */
 
 /*===== 响应解析 =====
  * TMC2209 读响应: 0x05 | 0xFF | addr | data[4] | CRC
@@ -362,6 +376,28 @@ uint8_t BSP_TMC_WriteReg(uint8_t reg, uint32_t val)
 
     HAL_Delay(1);
     return 1;
+}
+
+/* [2026-08-21] ★TMC 配置可靠性修复核心:
+ * TMC2209 写命令不返回响应, 无法从写本身确认成功。此前 SetDefaults 只发不验,
+ * 上电偶发写入失败 → mstep_reg_select/mres 未生效 → 微步在 16(3200步/圈) 与
+ * 硬件默认 8(1600步/圈) 之间漂移 → 回零行程/定点位置/失步行为全部随机。
+ * 本函数写后读回对比, 不匹配重试(最多3次), 确保关键配置必然生效。
+ * 注意: GSTAT 等"写1清位"寄存器读回≠写入值, 不适用本函数。 */
+uint8_t BSP_TMC_WriteRegVerified(uint8_t reg, uint32_t val, uint32_t *readback)
+{
+    for (uint8_t try = 0; try < 3; try++) {
+        uint32_t rb = 0;
+        BSP_TMC_WriteReg(reg, val);
+        if (BSP_TMC_ReadReg(reg, &rb)) {
+            if (rb == val) {
+                if (readback) *readback = rb;
+                return 1;
+            }
+        }
+        HAL_Delay(5);   /* 重试前稍候 (TMC 内部处理 / 总线稳定) */
+    }
+    return 0;
 }
 
 uint8_t BSP_TMC_ReadReg(uint8_t reg, uint32_t *val)
@@ -768,20 +804,36 @@ uint8_t BSP_TMC_Test(void)
     }
 }
 
-void BSP_TMC_SetDefaults(void)
+/* [2026-08-21] 返回 1=关键配置生效; 0=失败 (微步未生效, 调用方应重试或告警)。
+ * 验证策略 (手册 Rev1.03 逐寄存器核对):
+ *   - GCONF (RW):    写后读回, 仅掩码验证关键位 (mstep_reg_select/pdn_disable/multistep_filt)。
+ *                     I_scale_analog(bit0) 不验证 — 该位硬件/OTP 可能锁定 (实测写1读回0),
+ *                     且锁定的 0=内部基准(5VOUT) 恰是我们需要的模式, 电流由 IRUN 决定。
+ *   - IHOLD_IRUN / TPOWERDOWN (W 只写, p25): 只能写, 读回恒 0, 不做验证 (写入必然生效)。
+ *   - CHOPCONF / PWMCONF (RW): 全值读回验证 (微步/斩波关键)。 */
+uint8_t BSP_TMC_SetDefaults(void)
 {
+    uint8_t ok = 1;
+    uint32_t rb;
+
     GCONF_reg_t gconf = {0};
-    gconf.bits.I_scale_analog   = 1;   /* 内部5V基准, 忽略VREF (VREF 固定分压 0.833V, 内部基准更可控) */
+    gconf.bits.I_scale_analog   = 0;   /* 0=内部基准(5VOUT派生) — 手册 p20: 0=内部, 1=VREF。
+                                        * 硬件 VREF 固定分压 0.833V, 若用 VREF 模式电流偏低;
+                                        * 内部基准模式下电流由 IRUN 寄存器决定 (更可控) */
     gconf.bits.internal_Rsense  = 0;   /* 外部感应电阻 R37/R38 = 110mΩ */
     gconf.bits.en_SpreadCycle   = 0;   /* StealthChop2 (SPREAD 引脚接地硬件锁定, 寄存器无效) */
     gconf.bits.shaft            = 0;
     gconf.bits.index_otpw       = 1;
     gconf.bits.index_step       = 0;
     gconf.bits.pdn_disable      = 1;
-    gconf.bits.mstep_reg_select = 1;
+    gconf.bits.mstep_reg_select = 1;   /* ★微步由 UART 的 CHOPCONF.MRES 控制 (非 MS1/MS2 引脚) */
     gconf.bits.multistep_filt   = 1;
     gconf.bits.test_mode        = 0;
     BSP_TMC_WriteReg(TMC2209_REG_GCONF, gconf.raw);
+    if (BSP_TMC_ReadReg(TMC2209_REG_GCONF, &rb)) {
+        uint32_t key = (1u << 6) | (1u << 7) | (1u << 8);   /* pdn_disable|mstep_reg_select|multistep_filt */
+        if ((rb & key) != (gconf.raw & key)) { ok = 0; }
+    } else { ok = 0; }
 
     IHOLD_IRUN_reg_t ihold_irun = {0};
     /* [2026-08-19] 丢步修复: vsense=1(低量程)+irun=24 时电流仅 ≈0.59A RMS,
@@ -791,16 +843,14 @@ void BSP_TMC_SetDefaults(void)
      * 疑似电流过大触发过流/过热保护, 故保守取值, 实测不足再逐步上调
      * [2026-08-19 15:5x] 手册 Rev1.03 p25 核对: IRUN=bit12:8, IHOLD=bit4:0,
      * IHOLDDELAY=bit19:16 (TMC2209 布局, 与 TMC2208 不同, 位域已按手册核实正确)
-     * [2026-08-20 11:0x] ihold 12→8: 实测保持功耗 ~10W (ihold=12 ≈0.5A), 发热快;
-     * 测量治具轻载, 保持力矩需求低, 降回 8 (≈0.35A, ~7W)。
-     * 若到位后仍觉热: ①再降 6 (≈0.26A); ②流程结束由上位机发 0x24 MOTOR_STOP 脱机(0W) */
+     * [2026-08-21] p25 标注 IHOLD_IRUN 为 W (只写): 读回恒 0 属正常, 无需验证 */
     ihold_irun.bits.irun       = 24;
     ihold_irun.bits.ihold      = 12;    /* 保持电流 ≈IRUN 的 33% (到位保持力矩), 不够再调 10~12 */
     ihold_irun.bits.iholddelay = 3;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
 
     TPOWERDOWN_reg_t tpowerdown = {0};
-    tpowerdown.bits.tpowerdown = 20;   /* 到位后 ~0.44s 内维持 IRUN, 再降至 IHOLD */
+    tpowerdown.bits.tpowerdown = 20;   /* 到位后 ~0.44s 内维持 IRUN, 再降至 IHOLD (W 只写, 不验证) */
     BSP_TMC_WriteReg(TMC2209_REG_TPOWERDOWN, tpowerdown.raw);
 
     CHOPCONF_reg_t chopconf = {0};
@@ -809,12 +859,12 @@ void BSP_TMC_SetDefaults(void)
     chopconf.bits.hend      = 1;
     chopconf.bits.tbl       = 2;
     chopconf.bits.vsense    = 0;       /* [2026-08-19] 高电流量程 (丢步修复核心) */
-    chopconf.bits.mres      = 4;       /* 16 微步 = 3200 脉冲/圈, 与 U1 diam_calib 一致 */
+    chopconf.bits.mres      = 4;       /* ★16 微步 = 3200 脉冲/圈, 与 U1 diam_calib 一致 */
     chopconf.bits.intpol    = 1;
     chopconf.bits.dedge     = 0;
     chopconf.bits.diss2g    = 0;
     chopconf.bits.diss2vs   = 0;
-    BSP_TMC_WriteReg(TMC2209_REG_CHOPCONF, chopconf.raw);
+    if (!BSP_TMC_WriteRegVerified(TMC2209_REG_CHOPCONF, chopconf.raw, &rb)) { ok = 0; }
 
     PWMCONF_reg_t pwmconf = {0};
     pwmconf.bits.pwm_ofs       = 36;
@@ -828,5 +878,7 @@ void BSP_TMC_SetDefaults(void)
     pwmconf.bits.freewheel     = 0;
     pwmconf.bits.pwm_reg       = 8;
     pwmconf.bits.pwm_lim       = 12;
-    BSP_TMC_WriteReg(TMC2209_REG_PWMCONF, pwmconf.raw);
+    if (!BSP_TMC_WriteRegVerified(TMC2209_REG_PWMCONF, pwmconf.raw, &rb)) { ok = 0; }
+
+    return ok;
 }

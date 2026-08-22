@@ -39,7 +39,16 @@
 #define TMC2209_REG_PWMCONF       ((uint8_t)0x70)
 #define TMC2209_REG_PWM_SCALE     ((uint8_t)0x71)
 #define TMC2209_REG_PWM_AUTO      ((uint8_t)0x72)
-#define U7_DEBUG    0
+#define U7_DEBUG    1   /* [2026-08-20] 调试总开关: 1=启用(串口调试输出) 0=关闭 */
+
+/* [2026-08-21] TMC2209 调试打印独立开关: 默认 0=关闭。
+ * ★原因: U7 上电 TMC 配置 (BSP_TMC_Test/SetDefaults 读回) 的 [DBG] 打印走 USART1
+ * (=U1 的 RX 链路), 几百字节灌进 U1 的 USART1 RX DMA 环形缓冲多次回绕 → FIFO/sync
+ * 错位 → U1 重启后首条 U7 命令 (回零等) 响应丢失 → 8s 超时。打印仅调试价值, 关闭
+ * 不影响 TMC 配置功能; 需要观察 TMC 寄存器时改 1 重新编译 (仅 USB-TTL 直连 U7 用)。 */
+#if !defined(U7_TMC_PRINT)
+#define U7_TMC_PRINT    0
+#endif
 
 /*===== 寄存器位域定义 (union, 与 ESP 样板一致) =====*/
 
@@ -320,8 +329,13 @@ typedef union {
 uint8_t  BSP_TMC_Test(void);          /* 自测: T=全通过 W=写OK读失败 0=失败 */
 void     BSP_TMC_Init(void);
 void     BSP_TMC_Deinit(void);        /* 归还 TIM3 给电机 PWM */
-void     BSP_TMC_SetDefaults(void);
+uint8_t  BSP_TMC_SetDefaults(void);   /* [2026-08-21] 配置 GCONF/IHOLD_IRUN/TPOWERDOWN/CHOPCONF/PWMCONF,
+                                        * 每寄存器写后读回验证, 失败内部重试3次;
+                                        * 返回 1=全部验证通过, 0=最终失败 (微步/电流可能未生效!) */
 uint8_t  BSP_TMC_WriteReg(uint8_t reg, uint32_t val);
+uint8_t  BSP_TMC_WriteRegVerified(uint8_t reg, uint32_t val, uint32_t *readback);
+                                        /* [2026-08-21] 写+读回验证 (重试3次), 用于 SetDefaults 关键配置;
+                                        * GSTAT 等"写1清位"的只写寄存器不适用 */
 uint8_t  BSP_TMC_ReadReg(uint8_t reg, uint32_t *val);
 uint8_t  BSP_TMC_IsAlive(void);
 

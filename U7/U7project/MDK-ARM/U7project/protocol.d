@@ -36,4 +36,6 @@ u7project\protocol.o: ../Core/Inc/bsp_uart.h
 u7project\protocol.o: ../Core/Inc/bsp_gpio.h
 u7project\protocol.o: ../Core/Inc/bsp_adc.h
 u7project\protocol.o: ../Core/Inc/bsp_motor.h
+u7project\protocol.o: ../Core/Inc/bsp_tmc2209.h
+u7project\protocol.o: D:\Develop\Keil_MDK\ARM\ARMCC\Bin\..\include\stdbool.h
 u7project\protocol.o: D:\Develop\Keil_MDK\ARM\ARMCC\Bin\..\include\string.h

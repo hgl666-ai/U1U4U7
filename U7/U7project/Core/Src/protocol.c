@@ -4,11 +4,12 @@
 #include "bsp_gpio.h"
 #include "bsp_adc.h"
 #include "bsp_motor.h"
+#include "bsp_tmc2209.h"   /* U7_DEBUG 总开关定义处 */
 #include <string.h>
 
 extern UART_FIFO_t uart1_fifo;
 
-#ifdef U7_DEBUG
+#if U7_DEBUG
 /* 调试打印 (直接写 USART1->DR, 仅在定义 U7_DEBUG 时启用, 不污染正常协议帧) */
 static void motor_dbg_print(const char *s)
 {
@@ -54,7 +55,7 @@ static void SendResponse(uint8_t cmd, uint8_t *data, uint16_t len)
 
 static void HandlePing(void)
 {
-#ifdef U7_DEBUG
+#if U7_DEBUG
     while (!(USART1->SR & USART_SR_TXE));
     USART1->DR = 'P';  /* PING被调, COM4可见 */
 #endif
@@ -71,7 +72,7 @@ static void HandleGetVersion(void)
 static void HandleMotorStep(uint8_t *data, uint16_t len)
 {
     if (len < 4) {
-#ifdef U7_DEBUG
+#if U7_DEBUG
         motor_dbg_print("STEP reject: len<4\r\n");
 #endif
         uint8_t e = PROTO_STATUS_ERROR;
@@ -81,7 +82,7 @@ static void HandleMotorStep(uint8_t *data, uint16_t len)
     uint8_t  dir   = data[1];
     uint16_t steps = ((uint16_t)data[2] << 8) | data[3];
     if (motor != MOTOR_ID || steps == 0) {
-#ifdef U7_DEBUG
+#if U7_DEBUG
         motor_dbg_print("STEP reject: motor/step=0\r\n");
 #endif
         uint8_t e = PROTO_STATUS_ERROR;
@@ -90,13 +91,13 @@ static void HandleMotorStep(uint8_t *data, uint16_t len)
     /* [2026-08-17] M7 修复: 电机运动中拒绝新指令时必须回错误,
      * 此前忽略指令却回 OK, U1 会误以为已执行 (开环定位累积误差) */
     if (!BSP_Motor_Move(dir, steps, MOTOR_SPEED_SLOW)) {
-#ifdef U7_DEBUG
+#if U7_DEBUG
         motor_dbg_print("STEP reject: MOVE=0 (原因见 bsp_motor MOVE reject)\r\n");
 #endif
         uint8_t e = PROTO_STATUS_ERROR;
         SendResponse(PROTO_CMD_MOTOR_STEP, &e, 1); return;
     }
-#ifdef U7_DEBUG
+#if U7_DEBUG
     motor_dbg_print("STEP ok, steps=");
     motor_dbg_print_u16(steps);
     motor_dbg_print("\r\n");
@@ -114,6 +115,49 @@ static void HandleMotorStop(uint8_t *data, uint16_t len)
     BSP_Motor_Stop();
     uint8_t ok = PROTO_STATUS_OK;
     SendResponse(PROTO_CMD_MOTOR_STOP, &ok, 1);
+}
+
+/* [2026-08-20] 电机回零: 反转(CCW)低速找 IN1(PB9) 零点
+ * 阻塞等待回零完成 (最坏 3200 步@500Hz=6.4s, 兜底 8s), 完成后回 OK/ERROR
+ * [2026-08-21] 兜底 4s→8s: MAX_STEPS 加大到 3200 后, 4s 会在电机走完前强停 */
+static void HandleHome(void)
+{
+    if (BSP_Motor_IsBusy()) {
+        uint8_t e = PROTO_STATUS_ERROR;
+        SendResponse(PROTO_CMD_HOME, &e, 1); return;
+    }
+#if U7_DEBUG
+    /* [2026-08-21] 回零前 IN 电平: 确认未触发时读 1 (外部上拉) */
+    motor_dbg_print("HOME start IN1=");
+    motor_dbg_print_u16(BSP_IN_Read(1));
+    motor_dbg_print(" IN2=");
+    motor_dbg_print_u16(BSP_IN_Read(2));
+    motor_dbg_print("\r\n");
+#endif
+    BSP_Motor_Home();
+    uint32_t t0 = HAL_GetTick();
+    while (!BSP_Motor_HomeDone() && !BSP_Motor_HomeFail()) {
+        if (HAL_GetTick() - t0 > 8000) break;   /* 兜底超时 (3200步@500Hz=6.4s + 余量) */
+    }
+    /* [2026-08-20] 兜底超时后强制停机: 若电机仍在转 (busy 残留=1),
+     * 后续所有 MotorStep/HOME 会被拒 → "成功一次后电机不动但有力" */
+    if (BSP_Motor_IsBusy()) BSP_Motor_Stop();
+#if U7_DEBUG
+    /* [2026-08-21] 状态打印移到主循环 (ISR 内打印阻塞 USART ~3ms 会丢脉冲);
+     * 回零后 IN 电平: 若电机压到开关但 IN1 仍=1 → 触发极性反/开关未接线;
+     * 若 IN1=0 → 开关触发正常但 ISR 未捕获 (去抖/时序问题) */
+    if (BSP_Motor_HomeDone())             motor_dbg_print("HOME done (IN1)\r\n");
+    else if (BSP_Motor_HomeFail())        motor_dbg_print("HOME fail (timeout/IN2)\r\n");
+    else                                  motor_dbg_print("HOME fail (4s watchdog)\r\n");
+    motor_dbg_print("HOME end  IN1=");
+    motor_dbg_print_u16(BSP_IN_Read(1));
+    motor_dbg_print(" IN2=");
+    motor_dbg_print_u16(BSP_IN_Read(2));
+    motor_dbg_print("\r\n");
+#endif
+    uint8_t ok = (BSP_Motor_HomeDone() && !BSP_Motor_HomeFail())
+                 ? PROTO_STATUS_OK : PROTO_STATUS_ERROR;
+    SendResponse(PROTO_CMD_HOME, &ok, 1);
 }
 
 static void HandleReadInput(uint8_t *data, uint16_t len)
@@ -140,7 +184,7 @@ static void HandleSelfTest(void)
 
 static void HandleGetADC(void)
 {
-#ifdef U7_DEBUG
+#if U7_DEBUG
     USART1->DR = 'G'; while(!(USART1->SR&USART_SR_TC)); /* 看到G说明Handler被调了 */
 #endif
     static const uint32_t ch[4] = {ADC_CH_ADC0, ADC_CH_ADC1, ADC_CH_ADC4, ADC_CH_ADC5};
@@ -172,6 +216,7 @@ static void Dispatch(uint8_t cmd, uint8_t *data, uint16_t len)
         case PROTO_CMD_READ_INPUT:   HandleReadInput(data, len);  break;
         case PROTO_CMD_SELF_TEST:    HandleSelfTest();            break;
         case PROTO_CMD_GET_ADC:      HandleGetADC();              break;
+        case PROTO_CMD_HOME:         HandleHome();                break;
         case PROTO_CMD_RESET:        HandleReset();               break;
         default: {
             /* 通用回声: 收到任何帧都回复 PING ACK 证明收到 */
@@ -228,14 +273,14 @@ void PROTO_Run(void)
                 uint16_t len;
                 if (Frame_Parse_1B(rx_buf, rx_pos, &cmd, &seq, u7_tmp, &len)) {
                     req_seq = seq;
-#ifdef U7_DEBUG
+#if U7_DEBUG
                     while (!(USART1->SR & USART_SR_TXE));
                     USART1->DR = 'P';
                     while (!(USART1->SR & USART_SR_TC)); /* 确保P发完 */
 #endif
                     Dispatch(cmd, u7_tmp, len);
                 } else {
-#ifdef U7_DEBUG
+#if U7_DEBUG
                     while (!(USART1->SR & USART_SR_TXE));
                     USART1->DR = 'F';
                     while (!(USART1->SR & USART_SR_TC));

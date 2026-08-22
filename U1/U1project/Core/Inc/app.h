@@ -36,6 +36,8 @@ typedef enum {
 #define MGR_CMD_QUERY_U4_VER    0x000D   /* 查询U4运行时版本 (经U4协议0x32) */
 #define MGR_CMD_ADC_CALIB       0x0010   /* ADC 极值校准 */
 #define MGR_CMD_DIAM_CALIB      0x0011   /* 测径精度校准 (汇总25B ACK) */
+#define MGR_CMD_MOTOR_HOME      0x0012   /* [2026-08-20] 电机回零 (转发 U7 0x29) */
+#define MGR_CMD_MOTOR_SEQ       0x0013   /* [2026-08-20] 定点移动序列: 回零→1mm→1.5mm→2mm */
 #define MGR_CMD_ADC_RESULT      0x0014   /* ADC 测试结果 (治具自发, 16B) */
 #define MGR_CMD_QUERY_ADC       0x0020   /* 查询ADC (统一, Target:1=U1/4=U4/7=U7) */
 #define MGR_CMD_SN_UPLOAD       0x0024   /* U4 SN 码上传 (治具自发, 16B) */

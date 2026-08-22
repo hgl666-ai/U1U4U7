@@ -4,6 +4,12 @@
 #include "main.h"
 #include <stdint.h>
 
+/* [2026-08-21] U1 侧调试总开关: 1=启用(U7 会话诊断打印, 走 USB CDC), 0=关闭(默认, 不占 Flash)。
+ * 改为 1 后需重新编译, 诊断输出在 COM10 可见 */
+#ifndef U1_DEBUG
+#define U1_DEBUG    0
+#endif
+
 #define U7_MAX_DATA     256
 #define U7_RETRY_MAX    3
 #define U7_RETRY_DELAY  5
@@ -16,6 +22,7 @@
 #define U7_CMD_READ_INPUT   0x25
 #define U7_CMD_SELF_TEST    0x26
 #define U7_CMD_GET_ADC      0x28
+#define U7_CMD_HOME         0x29   /* [2026-08-20] 电机回零 (U7 反转找 IN1 零点, 阻塞≤3.2s) */
 #define U7_CMD_RESET        0x27
 
 #define U7_MOTOR_CW         0x00
@@ -42,5 +49,6 @@ int U7_ReadInput(uint8_t index, uint8_t *level);
 int U7_SelfTest(uint8_t *result);
 int U7_GetADC(uint8_t *buf);   /* buf需16字节, 4通道×4B */
 int U7_Reset(void);
+int U7_Home(void);             /* [2026-08-20] 电机回零: 等 1B 状态, 禁重试 */
 
 #endif

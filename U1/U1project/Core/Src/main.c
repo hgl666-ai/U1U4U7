@@ -110,6 +110,12 @@ int main(void)
   /* USER CODE BEGIN 2 */
   BSP_GPIO_Init();
   BSP_UART_Init();
+  /* [2026-08-21] ★重启后第一个 U7 命令偶发超时根因修复:
+   * U7 上电时先跑 TMC 配置 (U7_DEBUG=1 下 BSP_TMC_Test/SetDefaults 打印大量 [DBG] 文本,
+   * 走 USART1=U1 的 RX 链路) → 几百字节灌进 U1 的 USART1 RX DMA 环形缓冲(256B)多次回绕
+   * → FIFO/sync 错位 → 重启后立即发的 U7 命令 (回零等) 响应丢失 → 8s 超时。
+   * 等 2s 让 U7 完成上电 TMC 配置 (打印结束, DMA 缓冲干净) 再进主循环, 根治该污染。 */
+  HAL_Delay(2000);
   BSP_ADC_Init();
   U7_Proto_Init();
   U4_Proto_Init();

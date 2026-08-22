@@ -50,7 +50,7 @@
 "u1project\usbd_ctlreq.o"
 "u1project\usbd_ioreq.o"
 "u1project\usbd_cdc.o"
---strict --scatter "U1project\U1project.sct"
+--library_type=microlib --strict --scatter "U1project\U1project.sct"
 --summary_stderr --info summarysizes --map --load_addr_map_info --xref --callgraph --symbols
 --info sizes --info totals --info unused --info veneers
 --list "U1project.map" -o U1project\U1project.axf

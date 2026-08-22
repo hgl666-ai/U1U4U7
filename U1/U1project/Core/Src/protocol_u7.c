@@ -4,6 +4,28 @@
 #include "usart.h"
 #include <string.h>
 
+/* [2026-08-21] U1_DEBUG: U7 会话诊断 (默认关, 走 USB CDC 在 COM10 可见)。
+ * 用于定位"U7 回了响应但 U1 未处理"问题: 打印 TX 命令 / RX 收到的帧 cmd / 超时 */
+#if U1_DEBUG
+#include "usbd_cdc_if.h"
+static void u7dbg_str(const char *s)
+{
+    while (*s) {
+        uint8_t c = (uint8_t)*s++;
+        CDC_Transmit_FS(&c, 1);
+    }
+}
+static void u7dbg_hex(uint8_t v)
+{
+    const char *h = "0123456789ABCDEF";
+    uint8_t b[2] = { (uint8_t)h[v >> 4], (uint8_t)h[v & 0x0F] };
+    CDC_Transmit_FS(b, 2);
+}
+#else
+#define u7dbg_str(s)
+#define u7dbg_hex(v)
+#endif
+
 extern UART_FIFO_t       u7_fifo;
 extern UART_HandleTypeDef huart1;
 
@@ -85,6 +107,8 @@ void U7_Proto_Run(void)
         UART_ClearBuffer(&u7_fifo);
         UART_SendArray(&huart1, frame, frame_len);
 
+        u7dbg_str("TX"); u7dbg_hex(u7_sess.cmd); u7dbg_str("\r\n");   /* U1_DEBUG: 发命令 */
+
         u7_sess.deadline    = HAL_GetTick() + u7_sess.timeout_ms;
         u7_sess.frame_state = S_HDR0;
         u7_sess.frame_pos   = 0;
@@ -95,6 +119,7 @@ void U7_Proto_Run(void)
     /*── WAIT_RESP ──*/
     if (u7_sess.state == U7_SESS_WAIT_RESP) {
         if (HAL_GetTick() > u7_sess.deadline) {
+            u7dbg_str("TO"); u7dbg_hex(u7_sess.cmd); u7dbg_str("\r\n");   /* U1_DEBUG: 会话超时 */
             if (++u7_sess.retry < u7_sess.max_retry) {
                 u7_sess.deadline = HAL_GetTick() + U7_RETRY_DELAY;
                 u7_sess.state = U7_SESS_RETRY_DELAY;
@@ -147,6 +172,10 @@ void U7_Proto_Run(void)
                 uint16_t rx_len;
                 if (Frame_Parse_1B(fb, *fp, &rx_cmd, NULL,
                                    u7_sess.rx_buf, &rx_len)) {
+                    /* U1_DEBUG: 收到帧 cmd 与期望匹配? */
+                    u7dbg_str("RX"); u7dbg_hex(rx_cmd);
+                    u7dbg_str(rx_cmd == u7_sess.cmd ? "OK" : "MIS");
+                    u7dbg_hex(u7_sess.cmd); u7dbg_str("\r\n");
                     if (rx_cmd == u7_sess.cmd) {
                         u7_sess.rx_len = rx_len;
                         u7_sess.result = U7_PROTO_OK;
@@ -194,8 +223,13 @@ int U7_Ping(void)
 {
     switch (u7_sess.state) {
     case U7_SESS_IDLE: return U7_SendCmd_Start(U7_CMD_PING, NULL, 0, 1, 50);
-    case U7_SESS_DONE_OK: return U7_SendCmd_Result();
-    case U7_SESS_DONE_ERR: { int r = u7_sess.result; u7_sess.state = U7_SESS_IDLE; return r; }
+    case U7_SESS_DONE_OK:
+        /* [2026-08-20] 防跨命令消费: 残留结果若非本命令, 重置后走 IDLE 重发 */
+        if (u7_sess.cmd != U7_CMD_PING) { u7_sess.state = U7_SESS_IDLE; return U7_PROTO_PENDING; }
+        return U7_SendCmd_Result();
+    case U7_SESS_DONE_ERR:
+        if (u7_sess.cmd != U7_CMD_PING) { u7_sess.state = U7_SESS_IDLE; return U7_PROTO_PENDING; }
+        { int r = u7_sess.result; u7_sess.state = U7_SESS_IDLE; return r; }
     default: return U7_PROTO_PENDING;
     }
 }
@@ -223,10 +257,20 @@ int U7_MotorStep(uint8_t motor, uint8_t direction, uint16_t steps)
     switch (u7_sess.state) {
     case U7_SESS_IDLE: {
         uint8_t tx[4] = { motor, direction, (uint8_t)(steps >> 8), (uint8_t)steps };
-        return U7_SendCmd_Start(U7_CMD_MOTOR_STEP, tx, 4, 1, 5000);
+        /* [2026-08-21] M7 意图回归: 电机命令禁自动重试 (U1 回退旧固件时丢失)。
+         * 超时重试 = 重复发 0x23 = 电机重复动作 = 开环位置过冲, 必须 max_retry=1,
+         * 失败直接报错由上层决定 (U7_RETRY_MAX 默认 3) */
+        int r = U7_SendCmd_Start(U7_CMD_MOTOR_STEP, tx, 4, 1, 5000);
+        u7_sess.max_retry = 1;
+        return r;
     }
-    case U7_SESS_DONE_OK: return U7_SendCmd_Result();
-    case U7_SESS_DONE_ERR: { int r = u7_sess.result; u7_sess.state = U7_SESS_IDLE; return r; }
+    case U7_SESS_DONE_OK:
+        /* [2026-08-20] 防跨命令消费: 残留结果若非本命令, 重置后走 IDLE 重发 */
+        if (u7_sess.cmd != U7_CMD_MOTOR_STEP) { u7_sess.state = U7_SESS_IDLE; return U7_PROTO_PENDING; }
+        return U7_SendCmd_Result();
+    case U7_SESS_DONE_ERR:
+        if (u7_sess.cmd != U7_CMD_MOTOR_STEP) { u7_sess.state = U7_SESS_IDLE; return U7_PROTO_PENDING; }
+        { int r = u7_sess.result; u7_sess.state = U7_SESS_IDLE; return r; }
     default: return U7_PROTO_PENDING;
     }
 }
@@ -236,10 +280,40 @@ int U7_MotorStop(uint8_t motor)
     switch (u7_sess.state) {
     case U7_SESS_IDLE: {
         uint8_t tx[1] = { motor };
-        return U7_SendCmd_Start(U7_CMD_MOTOR_STOP, tx, 1, 1, 100);
+        /* [2026-08-21] 同 MotorStep: 非幂等, 禁重试 */
+        int r = U7_SendCmd_Start(U7_CMD_MOTOR_STOP, tx, 1, 1, 100);
+        u7_sess.max_retry = 1;
+        return r;
     }
     case U7_SESS_DONE_OK: return U7_SendCmd_Result();
     case U7_SESS_DONE_ERR: { int r = u7_sess.result; u7_sess.state = U7_SESS_IDLE; return r; }
+    default: return U7_PROTO_PENDING;
+    }
+}
+
+/* [2026-08-20] 电机回零: 发 0x29, 等 1B 状态 (U7 阻塞完成回零后回),
+ * timeout 8000ms 覆盖 U7 回零最长 6.4s (3200步@500Hz) + 余量;
+ * [2026-08-21] 5000→8000→15000→8000ms: 失败本质是 U1 偶发收不到 U7 响应
+ * (帧丢失, 与超时长短无关, 等再久也收不到), 15s 只会让失败时空等;
+ * 8s 足够覆盖正常回零 (含 U7 上电 TMC 配置慢的最坏 ~11s 情况由重试/重发兜底)。
+ * 回零非幂等 → 禁重试 (max_retry=1) */
+int U7_Home(void)
+{
+    switch (u7_sess.state) {
+    case U7_SESS_IDLE: {
+        int r = U7_SendCmd_Start(U7_CMD_HOME, NULL, 0, 1, 8000);
+        u7_sess.max_retry = 1;
+        return r;
+    }
+    case U7_SESS_DONE_OK:
+        /* [2026-08-20] 防跨命令消费: 若残留的是 PING/其他命令的 DONE_OK
+         * (3s 自动 PING 与回零共享单会话), 直接消费会导致回零命令根本没发出
+         * 却返回成功 → "电机不动但回 0x00"。必须校验 cmd 归属, 非本命令则重置重发 */
+        if (u7_sess.cmd != U7_CMD_HOME) { u7_sess.state = U7_SESS_IDLE; return U7_PROTO_PENDING; }
+        return U7_SendCmd_Result();
+    case U7_SESS_DONE_ERR:
+        if (u7_sess.cmd != U7_CMD_HOME) { u7_sess.state = U7_SESS_IDLE; return U7_PROTO_PENDING; }
+        { int r = u7_sess.result; u7_sess.state = U7_SESS_IDLE; return r; }
     default: return U7_PROTO_PENDING;
     }
 }
