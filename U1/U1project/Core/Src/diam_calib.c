@@ -4,25 +4,31 @@
 #include "protocol_u7.h"
 #include "protocol_u4.h"
 
-/*===== 状态机 =====
- * Phase: 0=idle, 1=ZERO(U4归零), 2=MOVE(电机转动), 3=WAIT(电机到位),
- *        4=READ(读Dactual+判定+事件), 5=NEXT(切下一位置), 6=DONE(汇总)
+/*===== state machine =====
+ * [2026-08-25] flow rewrite:
+ *   motor home (U7 0x29) -> U4 zero (0x10) -> set offset 0 (0x17) ->
+ *   CCW incremental move to 1mm/1.5mm/2mm -> dynamic wait done ->
+ *   100ms settle delay -> wait new report -> read diameter ->
+ *   check |Dactual-N|<=50um -> 25B summary ACK
+ * direction: home stops at CW limit (IN1), move must use CCW into travel area
  */
-enum { DC_IDLE = 0, DC_ZERO, DC_MOVE, DC_WAIT, DC_READ, DC_NEXT, DC_DONE };
+enum { DC_IDLE = 0, DC_HOME, DC_ZERO, DC_SETOFFSET, DC_MOVE,
+       DC_WAIT_MOVE, DC_DELAY, DC_READ, DC_NEXT, DC_DONE };
 
 static const uint16_t dc_target_um[DIAM_CALIB_POS_COUNT] = {1000, 1500, 2000};
 
 static uint8_t  dc_phase;
-static uint8_t  dc_pos_idx;                       /* 当前位置 0..2 */
-static uint16_t dc_result_n[DIAM_CALIB_POS_COUNT]; /* 目标 N */
-static uint16_t dc_result_d[DIAM_CALIB_POS_COUNT]; /* 实测 Dactual */
+static uint8_t  dc_pos_idx;                        /* current position 0..2 */
+static uint16_t dc_result_n[DIAM_CALIB_POS_COUNT]; /* target N */
+static uint16_t dc_result_d[DIAM_CALIB_POS_COUNT]; /* measured Dactual */
 static uint8_t  dc_result_pass[DIAM_CALIB_POS_COUNT];
 
-static uint32_t mv_deadline;       /* 电机到位等待截止 */
-static uint32_t dc_read_deadline;  /* 等 DUT 报文超时截止 */
+static uint32_t mv_deadline;       /* motor settle deadline (500ms + steps*2ms) */
+static uint32_t dc_delay_deadline; /* 100ms settle delay deadline */
+static uint32_t dc_read_deadline;  /* wait DUT report timeout deadline */
 
-/*===== 内部: 目标位置对应的电机步数 (开环) =====
- * steps = target_um × 3200 / 15500
+/*===== steps for a target position (open loop) =====
+ * steps = target_um * 3200 / 15500
  */
 static uint16_t DC_StepsForTarget(uint16_t target_um)
 {
@@ -30,7 +36,7 @@ static uint16_t DC_StepsForTarget(uint16_t target_um)
                       / DIAM_CALIB_OUTPUT_CIRC_UM);
 }
 
-/*===== 公开 API =====*/
+/*===== public API =====*/
 
 void DiamCalib_Init(void)
 {
@@ -41,9 +47,9 @@ uint8_t DiamCalib_Start(void)
 {
     if (dc_phase != DC_IDLE) return 1;  /* BUSY */
 
-    dc_phase   = DC_ZERO;
+    dc_phase   = DC_HOME;
     dc_pos_idx = 0;
-    /* 清空结果 (全部 FAIL 初值) */
+    /* clear results (all FAIL default) */
     for (uint8_t i = 0; i < DIAM_CALIB_POS_COUNT; i++) {
         dc_result_n[i]    = dc_target_um[i];
         dc_result_d[i]    = 0;
@@ -61,60 +67,87 @@ void DiamCalib_Run(void)
 {
     if (dc_phase == DC_IDLE) return;
 
-    /*── ZERO: DUT 测径点归零 (电机固定起点即零点, 无需动作) ──*/
-    if (dc_phase == DC_ZERO) {
-        int ret = U4_ZeroSensor();
-        if (ret == U4_PROTO_PENDING) return;
-        if (ret != U4_PROTO_OK) {
-            dc_phase = DC_DONE;   /* 归零失败 → 汇总 FAIL */
-            return;
-        }
-        dc_phase = DC_MOVE;   /* 开始位置1移动 */
+    /*-- HOME: motor home (CW to IN1, motor_pos=0) --*/
+    if (dc_phase == DC_HOME) {
+        int ret = U7_Home();
+        if (ret == U7_PROTO_PENDING) return;
+        if (ret != U7_PROTO_OK) { dc_phase = DC_DONE; return; }  /* fail -> summary FAIL */
+        dc_phase = DC_ZERO;
         return;
     }
 
-    /*── MOVE: 电机开环转动 (从上一位置到当前目标的增量步数) ──*/
+    /*-- ZERO: U4 sensor zero --*/
+    if (dc_phase == DC_ZERO) {
+        int ret = U4_ZeroSensor();
+        if (ret == U4_PROTO_PENDING) return;
+        if (ret != U4_PROTO_OK) { dc_phase = DC_DONE; return; }
+        dc_phase = DC_SETOFFSET;
+        return;
+    }
+
+    /*-- SETOFFSET: set offset 0 so length = raw_length --*/
+    if (dc_phase == DC_SETOFFSET) {
+        int ret = U4_SetOffset(0);
+        if (ret == U4_PROTO_PENDING) return;
+        if (ret != U4_PROTO_OK) { dc_phase = DC_DONE; return; }
+        dc_phase = DC_MOVE;
+        return;
+    }
+
+    /*-- MOVE: CCW incremental move to current target --*/
     if (dc_phase == DC_MOVE) {
         uint16_t target = dc_target_um[dc_pos_idx];
         uint16_t steps;
         if (dc_pos_idx == 0) {
-            steps = DC_StepsForTarget(target);           /* 0 → 1000um */
+            steps = DC_StepsForTarget(target);           /* 0 -> 1000um */
         } else {
             steps = DC_StepsForTarget(target)
-                  - DC_StepsForTarget(dc_target_um[dc_pos_idx - 1]);  /* 增量 */
+                  - DC_StepsForTarget(dc_target_um[dc_pos_idx - 1]);  /* delta */
         }
 
-        int ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, U7_MOTOR_CW, steps);
-        if (ret == U7_PROTO_PENDING) return;  /* 电机会话进行中 */
+        /* [2026-08-25] direction fix: home is at CW limit, move CCW into area */
+        int ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, U7_MOTOR_CCW, steps);
+        if (ret == U7_PROTO_PENDING) return;  /* motor session in progress */
+        if (ret != U7_PROTO_OK) { dc_phase = DC_DONE; return; }
 
-        /* 指令已发出, 等物理到位 */
-        mv_deadline = HAL_GetTick() + DIAM_CALIB_MOTOR_DELAY_MS;
-        dc_phase = DC_WAIT;
+        /* U7 returns OK immediately (non-blocking); wait enough for physical move:
+         * 500ms base + steps*2ms (slow speed), same formula as MotorSeq_Run */
+        mv_deadline = HAL_GetTick() + DIAM_CALIB_MOTOR_DELAY_MS
+                    + (uint32_t)steps * 2U;
+        dc_phase = DC_WAIT_MOVE;
         return;
     }
 
-    /*── WAIT: 等电机到位 ──*/
-    if (dc_phase == DC_WAIT) {
+    /*-- WAIT_MOVE: wait motor physically done --*/
+    if (dc_phase == DC_WAIT_MOVE) {
         if (HAL_GetTick() < mv_deadline) return;
-        /* 到位 → 等 DUT 报文刷新, 读 Dactual */
+        dc_delay_deadline = HAL_GetTick() + DIAM_CALIB_READ_DELAY_MS;
+        dc_phase = DC_DELAY;
+        return;
+    }
+
+    /*-- DELAY: 100ms settle after arrival (user requirement) --*/
+    if (dc_phase == DC_DELAY) {
+        if (HAL_GetTick() < dc_delay_deadline) return;
+        /* settle done -> wait new report, read Dactual */
         u4_report_fresh  = 0;
         dc_read_deadline = HAL_GetTick() + DIAM_CALIB_DUT_TIMEOUT_MS;
         dc_phase = DC_READ;
         return;
     }
 
-    /*── READ: 等新报文 → 读 Dactual → 判定 → 发事件 ──*/
+    /*-- READ: wait new report -> read Dactual -> judge --*/
     if (dc_phase == DC_READ) {
         if (!u4_report_fresh) {
             if (HAL_GetTick() > dc_read_deadline) {
-                dc_result_d[dc_pos_idx]    = 0;      /* DUT 无响应 */
+                dc_result_d[dc_pos_idx]    = 0;      /* DUT no response */
                 dc_result_pass[dc_pos_idx] = 0;
                 dc_phase = DC_NEXT;
             }
             return;
         }
-        /* 有新报文 */
-        u4_report_fresh = 0;   /* 消费 */
+        /* new report */
+        u4_report_fresh = 0;   /* consume */
         dc_result_d[dc_pos_idx] = (uint16_t)u4_report.length;
         {
             uint16_t n   = dc_result_n[dc_pos_idx];
@@ -126,7 +159,7 @@ void DiamCalib_Run(void)
         return;
     }
 
-    /*── NEXT: 推进到下一位置或完成 ──*/
+    /*-- NEXT: advance position or finish --*/
     if (dc_phase == DC_NEXT) {
         dc_pos_idx++;
         if (dc_pos_idx < DIAM_CALIB_POS_COUNT) {
@@ -137,7 +170,7 @@ void DiamCalib_Run(void)
         return;
     }
 
-    /*── DONE: 汇总 25B ACK ──*/
+    /*-- DONE: summary 25B ACK --*/
     if (dc_phase == DC_DONE) {
         uint8_t result[DIAM_CALIB_SUMMARY_LEN];
         uint8_t allpass = 1;

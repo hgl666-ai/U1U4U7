@@ -560,16 +560,26 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
     }
 
 
-    /* ADC 极值校准 (adc_calib 模块) */
+    /* ADC 极值校准 (adc_calib 模块)
+     * 流程含回零+电机往复3mm, 须避开与回零/定点/测径/deferred 并发 */
     case MGR_CMD_ADC_CALIB: {
+        if (deferred_cmd != 0 || app_state != APP_STATE_IDLE
+         || MotorSeq_IsBusy() || DiamCalib_IsBusy()) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(cmd, &e, 1); break;
+        }
         if (ADC_Calib_Start() != 0) {
             uint8_t e = APP_STATUS_BUSY; APP_SendAck(cmd, &e, 1);
         }
         break;  /* 不立即 ACK, 由 ADC_Calib_Run 异步完成 */
     }
 
-    /* 测径精度校准 (diam_calib 模块) */
+    /* 测径精度校准 (diam_calib 模块)
+     * 流程含回零+电机移动, 须避开与回零/定点/ADC校准/deferred 并发 */
     case MGR_CMD_DIAM_CALIB: {
+        if (deferred_cmd != 0 || app_state != APP_STATE_IDLE
+         || MotorSeq_IsBusy() || ADC_Calib_IsBusy()) {
+            uint8_t e = APP_STATUS_BUSY; APP_SendAck(cmd, &e, 1); break;
+        }
         if (DiamCalib_Start() != 0) {
             uint8_t e = APP_STATUS_BUSY; APP_SendAck(cmd, &e, 1);
         }

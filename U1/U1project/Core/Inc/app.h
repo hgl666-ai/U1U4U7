@@ -26,7 +26,6 @@ typedef enum {
 } RGB_Color_t;
 
 /*===== 经理协议 命令码 =====*/
-/* U1/U7 IAP (0x0001-0x0003, 0x0005-0x0007) 已删除, ★ NIY 未实现未使用 */
 #define MGR_CMD_QUERY_U1_VER    0x0004   /* 查询 U1 版本 */
 #define MGR_CMD_QUERY_U7_VER    0x0008   /* 查询 U7 版本 */
 #define MGR_CMD_FW_START        0x0009   /* U4 固件 起始帧 (含3B版本号) */
@@ -41,7 +40,6 @@ typedef enum {
 #define MGR_CMD_ADC_RESULT      0x0014   /* ADC 测试结果 (治具自发, 16B) */
 #define MGR_CMD_QUERY_ADC       0x0020   /* 查询ADC (统一, Target:1=U1/4=U4/7=U7) */
 #define MGR_CMD_SN_UPLOAD       0x0024   /* U4 SN 码上传 (治具自发, 16B) */
-/* 0x0025/0x0026/0x0027/0x0029/0x002A 诊断命令已删除 (腾 Flash) */
 #define MGR_CMD_U4_SET_PERIOD   0x002B   /* U4 设置报文周期 (转发 0x18, LEN=2 [period_ms 2B 大端]) */
 
 /*===== 治具测试 命令码 (0x011x, 避开经理协议) =====*/
@@ -107,15 +105,22 @@ typedef enum {
 #define ADC_CONSISTENCY_RESULT_LEN         64U   /* 48B ADC + 16B 判定区 */
 #define ADC_CONSISTENCY_TOKEN_ALL          0x00U /* LEN=2 时 DATA[0] 为 0x00 表示全芯片 */
 
-/*===== ADC 极值自动校准 (CMD 0x0010) =====*/
-#define ADC_CALIB_STEPS_PER_READ         100U  /* 每次 ADC 采样前电机步数 */
-#define ADC_CALIB_READS_PER_DIR            4U  /* 每个方向采样次数 */
-#define ADC_CALIB_CYCLES                   3U  /* 往复循环数 */
-#define ADC_CALIB_MOVE_TIMEOUT_MS      10000U  /* 单次电机移动超时 */
-#define ADC_CALIB_MOTOR_DELAY_MS          500U  /* 电机物理到位等待 */
-#define ADC_CALIB_ADC_TIMEOUT_MS        1000U  /* ADC 读取超时 */
+/*===== ADC 极值自动校准 (CMD 0x0010) =====
+ * 流程: 回零 → U4开始校准(0x11) → CCW去3mm → 等到位 → CW回3mm → 等到位
+ *       → U4完成校准(0x12) → 延迟 → 读U4报文 min/max → 阈值判定 → 回9B ACK
+ */
 #define ADC_CALIB_MOTOR_ID                 0U  /* 电机编号, 与 U7 MOTOR_ID 一致 */
-#define ADC_CALIB_RESULT_LEN               8U  /* 4 极值 × 2B */
+#define ADC_CALIB_SWEEP_UM              3000U  /* 3mm 往复行程 (um) */
+#define ADC_CALIB_SWEEP_STEPS            619U  /* 3000um×3200/15500 换算步数 */
+#define ADC_CALIB_MOTOR_DELAY_MS          500U  /* 电机物理到位等待 (每次移动后) */
+#define ADC_CALIB_READ_DELAY_MS           200U  /* 完成校准后读极值前延迟 */
+/* 阈值判定 (逐通道, 任一条件成立即该通道失败)
+ * [2026-08-24] 修正: MAX-MIN 方向反了, 原"<2000 失败"改为">2000 失败"
+ * 即要求摆幅不得超过 2000 LSB (过大视为异常), MAX>4000 / MIN<50 为饱和/下限保护 */
+#define ADC_CALIB_MAX_DIFF              2000U  /* 同通道 MAX-MIN 上限, 超过则失败 */
+#define ADC_CALIB_MAX_VAL               4000U  /* MAX 上限 */
+#define ADC_CALIB_MIN_VAL                 50U  /* MIN 下限 */
+#define ADC_CALIB_RESULT_LEN               9U  /* [status] + 4 极值 × 2B */
 
 /*===== 缓冲区 / 时序 =====*/
 #define APP_PAGE_SIZE              256

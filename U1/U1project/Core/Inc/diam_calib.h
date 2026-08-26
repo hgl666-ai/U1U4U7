@@ -5,7 +5,11 @@
 #include <stdint.h>
 
 /* 测径精度校准 (CMD 0x0011/0x0012)
- * 电机开环转动预设步数(对应1/1.5/2mm), 读 DUT 实测直径, 判定 |Dactual-N|≤50um */
+ * [2026-08-25] 流程重写:
+ *   电机回零(U7 0x29) → U4归零(0x10) → 设偏移0(0x17) →
+ *   CCW 增量移动 1/1.5/2mm → 动态等到位 → 100ms 稳定延迟 →
+ *   等新报文读直径 → 判定 |Dactual-N|≤50um → 25B 汇总 ACK
+ * 方向: 回零在 CW 限位端点, 移动必须 CCW 进入行程区 (2026-08-22 经验) */
 
 #define DIAM_CALIB_POS_COUNT        3U      /* 测试位置数 */
 #define DIAM_CALIB_TOLERANCE_UM     50U     /* 容忍误差 0.05mm */
@@ -13,7 +17,8 @@
 #define DIAM_CALIB_STEPS_PER_REV    3200U   /* 电机 1 圈 = 200步 × 16细分 */
 #define DIAM_CALIB_OUTPUT_CIRC_UM   15500U  /* 输出轴周长 15.5mm = 15500um */
 
-#define DIAM_CALIB_MOTOR_DELAY_MS   500U    /* 电机到位等待 */
+#define DIAM_CALIB_MOTOR_DELAY_MS   500U    /* 电机到位基础等待 (实际 = 500 + 步数×2ms) */
+#define DIAM_CALIB_READ_DELAY_MS    100U    /* 移动到位后、读直径前稳定延迟 */
 #define DIAM_CALIB_DUT_TIMEOUT_MS   1000U   /* 等 DUT 报文超时 */
 #define DIAM_CALIB_MOTOR_ID         0U      /* 电机编号 */
 #define DIAM_CALIB_SUMMARY_LEN      25U     /* 汇总: [总判定1] + 3×[8] */
