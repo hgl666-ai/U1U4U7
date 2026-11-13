@@ -110,10 +110,10 @@ void DiamCalib_Run(void)
         if (ret == U7_PROTO_PENDING) return;  /* motor session in progress */
         if (ret != U7_PROTO_OK) { dc_phase = DC_DONE; return; }
 
-        /* U7 returns OK immediately (non-blocking); wait enough for physical move:
-         * 500ms base + steps*2ms (slow speed), same formula as MotorSeq_Run */
+        /* [2026-11-13] U7 移动按 MOTOR_SPEED_SLOW=2000Hz → 0.5ms/步, 这里取 1ms/步留 2x 余量。
+         * 旧值 2ms/步是按 500Hz 低速估的; 换 1mm 导程后步数×15.5, 沿用 2ms 会白等 ~14s/段 */
         mv_deadline = HAL_GetTick() + DIAM_CALIB_MOTOR_DELAY_MS
-                    + (uint32_t)steps * 2U;
+                    + (uint32_t)steps * 1U;
         dc_phase = DC_WAIT_MOVE;
         return;
     }

@@ -22,7 +22,7 @@
 #define U7_CMD_READ_INPUT   0x25
 #define U7_CMD_SELF_TEST    0x26
 #define U7_CMD_GET_ADC      0x28
-#define U7_CMD_HOME         0x29   /* [2026-08-20] 电机回零 (U7 反转找 IN1 零点, 阻塞≤3.2s) */
+#define U7_CMD_HOME         0x29   /* 电机回零 (U7 找 IN1 零点; [2026-11-13] 换丝杆电机后阻塞≤10.5s) */
 #define U7_CMD_RESET        0x27
 
 #define U7_MOTOR_CW         0x00

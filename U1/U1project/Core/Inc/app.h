@@ -40,6 +40,9 @@ typedef enum {
 #define MGR_CMD_ADC_RESULT      0x0014   /* ADC 测试结果 (治具自发, 16B) */
 #define MGR_CMD_QUERY_ADC       0x0020   /* 查询ADC (统一, Target:1=U1/4=U4/7=U7) */
 #define MGR_CMD_SN_UPLOAD       0x0024   /* U4 SN 码上传 (治具自发, 16B) */
+#define MGR_CMD_MOTOR_FWD       0x0025   /* [2026-11-13] 电机前进固定步数 (不回零, 点动用) */
+#define MGR_CMD_MOTOR_BACK      0x0026   /* [2026-11-13] 电机后退固定步数 (不回零, 点动用) */
+#define MOTOR_JOG_STEPS          1600U   /* 点动步数: 0.5mm (1600/3200 步每mm) */
 #define MGR_CMD_U4_SET_PERIOD   0x002B   /* U4 设置报文周期 (转发 0x18, LEN=2 [period_ms 2B 大端]) */
 
 /*===== 治具测试 命令码 (0x011x, 避开经理协议) =====*/
@@ -111,7 +114,8 @@ typedef enum {
  */
 #define ADC_CALIB_MOTOR_ID                 0U  /* 电机编号, 与 U7 MOTOR_ID 一致 */
 #define ADC_CALIB_SWEEP_UM              3000U  /* 3mm 往复行程 (um) */
-#define ADC_CALIB_SWEEP_STEPS            619U  /* 3000um×3200/15500 换算步数 */
+#define ADC_CALIB_SWEEP_STEPS           9600U  /* [2026-11-13] 3000um × 3200步/圈 ÷ 1000um导程 = 9600
+                                                * (旧旋转机构 15500um/圈 时为 619) */
 #define ADC_CALIB_MOTOR_DELAY_MS          500U  /* 电机物理到位等待 (每次移动后) */
 #define ADC_CALIB_READ_DELAY_MS           200U  /* 完成校准后读极值前延迟 */
 /* 阈值判定 (逐通道, 任一条件成立即该通道失败)

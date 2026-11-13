@@ -20,6 +20,7 @@ static volatile uint8_t  home_fail;      /* 1=失败 (超时 / 撞 IN2 / 启动�
 static volatile uint8_t  home_skip;      /* 启动保护: 前 N 步不检测限位 (防启动毛刺误判) */
 static volatile uint8_t  home_in1_cnt;   /* IN1 连续触发计数 (去抖) */
 static volatile uint8_t  home_in2_cnt;   /* IN2 连续触发计数 (去抖) */
+static volatile uint8_t  home_in2_armed; /* [2026-11-13] IN2 已离开过一次才允许判撞限位 */
 
 /*===== 梯形加减速状态 [2026-08-19] =====
  * 丢步修复: 直接以目标频率硬启动/硬停 → 平滑起步/减速到位。
@@ -144,7 +145,10 @@ uint8_t BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
     motor_target = steps;
     motor_count  = 0;
 
-    BSP_DIR2_Set(dir ? MOTOR_DIR_CCW : MOTOR_DIR_CW);
+    /* [2026-11-13] 方向统一取反 (MOTOR_DIR_INVERT): 新丝杆电机装配方向与原电机相反。
+     * 全局只此一处取反 → 回零与定位的"互为反向"不变式自动保持, U1 侧无需改动。
+     * 若在硬件上对调了某一相线圈, 把 bsp_motor.h 的 MOTOR_DIR_INVERT 改回 0。 */
+    BSP_DIR2_Set(((dir ^ MOTOR_DIR_INVERT) ? MOTOR_DIR_CCW : MOTOR_DIR_CW));
 
     /*── 安全启动序列: 清 UIF/NVIC 防虚计一步; busy 最后置位 (ARPE=0, 写后立即生效) ──*/
     TIM3->CNT  = 0;                                    /* 复位计数, 首周期 = ARR+1 */
@@ -200,7 +204,8 @@ void BSP_Motor_Home(void)
      * 防启动瞬间引脚毛刺误判"已触发" → 电机只走 1 步就停 (实测现象) */
     home_skip = MOTOR_HOME_SKIP_FIRST;
     home_in1_cnt = 0; home_in2_cnt = 0;
-    /* freq=500Hz(==F_START) → delta=0 → 无加减速, 全程低速直跑找零点 */
+    home_in2_armed = 0;   /* [2026-11-13] 若起步就压在 IN2 上, 先离开再武装, 否则无法脱困 */
+    /* [2026-11-13] 速度 2500Hz ≠ F_START(500) → 会走加减速斜坡 (500→2500Hz) */
     if (!BSP_Motor_Move(MOTOR_HOME_DIR, MOTOR_HOME_MAX_STEPS, MOTOR_HOME_SPEED_HZ)) {
         home_active = 0; home_fail = 1;   /* 启动被拒 (busy/参数) → 失败 */
     }
@@ -276,13 +281,17 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                     return;   /* [2026-08-21] ISR 内不打印 (阻塞 USART ~3ms 会丢脉冲) */
                 }
             } else home_in1_cnt = 0;
+            /* [2026-11-13] IN2 必须先"离开"一次才武装 —— 否则若上电时车架已压在 IN2 上
+             * (上一次方向跑反把它顶到对侧端点), 回零会在起步 (skip+debounce) 步内立刻判失败,
+             * 现象就是"发命令电机完全不动 / 只抖一下", 且永远无法自己脱困。
+             * 武装之后 IN2 仍照常保护超程。 */
             if (BSP_IN_Read(2) == 0) {
-                if (++home_in2_cnt >= MOTOR_HOME_DEBOUNCE) {  /* IN2 低电平触发 = 撞对侧 */
+                if (home_in2_armed && (++home_in2_cnt >= MOTOR_HOME_DEBOUNCE)) {
                     home_active = 0; home_fail = 1;
                     motor_halt();
                     return;   /* 同上 */
                 }
-            } else home_in2_cnt = 0;
+            } else { home_in2_cnt = 0; home_in2_armed = 1; }
         }
     }
 

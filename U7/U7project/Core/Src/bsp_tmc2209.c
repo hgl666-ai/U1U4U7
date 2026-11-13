@@ -707,9 +707,9 @@ uint8_t BSP_TMC_Test(void)
     tmc_print("\r\n");
 
     IHOLD_IRUN_reg_t ihold_irun = {0};
-    ihold_irun.bits.irun       = 20;   /* [2026-11-13] 与 SetDefaults 同步 (诊断值 ≈0.64A);
+    ihold_irun.bits.irun       = 17;   /* 与 SetDefaults 同步 (0.6A 电机 ≈0.55A);
                                         * 本路径在 U7_DEBUG=1 时上电先跑 */
-    ihold_irun.bits.ihold      = 8;
+    ihold_irun.bits.ihold      = 6;
     ihold_irun.bits.iholddelay = 3;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
     tmc_print_reg("IHOLD_IRUN", TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
@@ -856,25 +856,23 @@ uint8_t BSP_TMC_SetDefaults(void)
     } else { ok = 0; }
 
     IHOLD_IRUN_reg_t ihold_irun = {0};
-    /* [2026-11-12] ★电机更换: 普菲德 0.5A 固定轴步进电机 (原为 1.5A 大机座)。
-     * 电流必须按新电机额定重算 —— 旧配置 vsense=0+irun=24, 按 TMC2209 手册公式
-     *   I_RMS = (IRUN+1)/32 × V_FS/(R_SENSE+0.02) × 1/√2   (R=110mΩ, V_FS=0.325V)
-     * ≈1.38A RMS, 是 0.5A 额定的 2.8 倍, 发热约 (2.8)²≈7.6 倍 → 必须降。
-     * 新配置: vsense=1(低量程, 小电流档分辨率更细) + irun=14
-     *   → ≈0.46A RMS (92% 额定); ihold=5 → ≈0.18A (保持力矩 ≈40% IRUN)。
-     * 台架调法: 丢步 → irun 每次 +2 (不超过 16); 到位置被负载拖走 → ihold 加 1~2。
-     * 注: 若实测采样电阻非 110mΩ, 实际电流按比例变化, 以钳表/采样压降实测为准。
-     * [历史·1.5A 电机时期, 已作废] [2026-08-19] vsense=1+irun=24 仅≈0.59A 力矩不足
-     *   → 改 vsense=0+irun=24; 曾试 irun=28 实测 TMC 发热且电机不转(疑过流/过温保护)。
+    /* [2026-11-13] ★电机最终参数 (普菲德 20 固定轴步进, 丝杆导程 1mm):
+     *   步距角 1.8° (200步/圈) / 额定电流 0.6A / 12-24V / 有效行程 12.7mm
+     *   最大推力: 水平 60N(6KG) / 垂直 30N(3KG) / 最高转速 600rpm
+     * 电流按 0.6A 额定重算 (TMC2209 手册公式, R_SENSE=110mΩ):
+     *   I_RMS = (IRUN+1)/32 × V_FS/(R_SENSE+0.02) × 1/√2,  vsense=1 → V_FS=0.180V
+     *   irun=17 → 0.551A RMS (额定 92%); ihold=6 → 0.214A (约 39% IRUN)
+     * 台架调法: 丢步 → irun +2 (16→18, 不建议再高); 到位被负载拖走 → ihold +1~2。
+     * 注: 若实测采样电阻非 110mΩ, 电流按比例变化, 以钳表/采样压降实测为准。
+     * [历史] [2026-11-12] 曾按 0.5A 电机设 irun=14; 后因"发命令完全不动"上调到 20 排查,
+     *   最终根因是 U7_DEBUG=0 删掉了 PDN 复位 (见 BSP_TMC_Init 注释), 与电流无关。
+     * [历史·1.5A 电机时期] [2026-08-19] vsense=0+irun=24≈1.38A (该电机 1.5A 的 92%);
+     *   曾试 irun=28 实测 TMC 发热且电机不转(疑过流/过温保护)。
      * [2026-08-19 15:5x] 手册 Rev1.03 p25 核对: IRUN=bit12:8, IHOLD=bit4:0,
      * IHOLDDELAY=bit19:16 (TMC2209 布局, 与 TMC2208 不同, 位域已按手册核实正确)
      * [2026-08-21] p25 标注 IHOLD_IRUN 为 W (只写): 读回恒 0 属正常, 无需验证 */
-    ihold_irun.bits.irun       = 20;    /* [2026-11-13] 诊断上调: 14(≈0.46A) → 20(≈0.64A)。
-                                         * 背景: 换 0.5A 电机后出现"发命令完全不动", 需分离
-                                         *   (a) 电机烧/无电流  与  (b) 电流偏小力矩不足。
-                                         * ★本值仅用于排查: 0.64A≈额定 1.28 倍, 确认能转后
-                                         *   必须回落到 irun=14 (≈0.46A) 再上产线。 */
-    ihold_irun.bits.ihold      = 8;     /* [2026-11-13] 同步上调 5→8 (≈0.28A), 便于手测保持力矩 */
+    ihold_irun.bits.irun       = 17;    /* 0.6A 电机: ≈0.55A RMS (92%) @vsense=1, R=110mΩ */
+    ihold_irun.bits.ihold      = 6;     /* 保持 ≈0.21A (39% IRUN) */
     ihold_irun.bits.iholddelay = 3;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
 

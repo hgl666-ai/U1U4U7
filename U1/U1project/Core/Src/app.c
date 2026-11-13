@@ -615,6 +615,25 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         break;  /* 不立即 ACK, 由 MotorSeq_Run 异步完成 */
     }
 
+    /* [2026-11-13] 电机点动: 前进/后退固定步数, **不回零** (手动定位/调试用)
+     *   前进 = U7_MOTOR_CCW (与 0x0013 定点移动同向)
+     *   后退 = U7_MOTOR_CW
+     * U7 收到指令即回 ACK (移动在后台 ISR 里继续), 故这里本地空转 U7 会话
+     * 几 ms 拿到结果后立即回 1B 状态; 失败(U7 忙/超时)回 0x05。
+     * U1 Flash 仅剩 420B, 因此阻塞等会话而不用 deferred 机制。 */
+    case MGR_CMD_MOTOR_FWD:
+    case MGR_CMD_MOTOR_BACK: {
+        uint8_t d   = (cmd == MGR_CMD_MOTOR_FWD) ? U7_MOTOR_CCW : U7_MOTOR_CW;
+        int     ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, d, MOTOR_JOG_STEPS);
+        while (ret == U7_PROTO_PENDING) {
+            U7_Proto_Run();
+            ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, d, MOTOR_JOG_STEPS);
+        }
+        { uint8_t e = (ret == U7_PROTO_OK) ? APP_STATUS_OK : APP_STATUS_ERR_TEST;
+          APP_SendAck(cmd, &e, 1); }
+        break;
+    }
+
     /*──────────────────────────────────────────────────────
      * 治具测试命令
      *──────────────────────────────────────────────────────*/
@@ -759,7 +778,7 @@ static void MotorSeq_Run(void)
         ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, U7_MOTOR_CCW, (uint16_t)delta);
         if (ret == U7_PROTO_PENDING) return;
         if (ret != U7_PROTO_OK) { seq_fail = 1; seq_phase = 4; return; }
-        seq_deadline = HAL_GetTick() + 500U + (uint32_t)delta * 2U;  /* ≈2ms/步 低速 */
+        seq_deadline = HAL_GetTick() + 500U + (uint32_t)delta * 1U;  /* [2026-11-13] 1ms/步 (2000Hz=0.5ms, 留2x) */
         seq_phase = 3;
         return;
     }

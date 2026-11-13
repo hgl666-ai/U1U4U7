@@ -137,7 +137,8 @@ static void HandleHome(void)
     BSP_Motor_Home();
     uint32_t t0 = HAL_GetTick();
     while (!BSP_Motor_HomeDone() && !BSP_Motor_HomeFail()) {
-        if (HAL_GetTick() - t0 > 8000) break;   /* 兜底超时 (3200步@500Hz=6.4s + 余量) */
+        if (HAL_GetTick() - t0 > 35000) break;   /* [2026-11-13] 8000→35000ms: 换 20mm 丝杆电机(导程1mm,
+                                                  * 行程12.7mm=42000步) 后 @1500Hz 全程约 28s + 斜坡 */
     }
     /* [2026-08-20] 兜底超时后强制停机: 若电机仍在转 (busy 残留=1),
      * 后续所有 MotorStep/HOME 会被拒 → "成功一次后电机不动但有力" */

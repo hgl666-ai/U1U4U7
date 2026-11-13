@@ -81,11 +81,11 @@ void ADC_Calib_Run(void)
         int ret = U7_MotorStep(ADC_CALIB_MOTOR_ID, U7_MOTOR_CCW, ADC_CALIB_SWEEP_STEPS);
         if (ret == U7_PROTO_PENDING) return;
         if (ret != U7_PROTO_OK) { ac_fail = 1; ac_phase = AC_DONE; return; }
-        /* [2026-08-24] 等待须覆盖电机物理走完 (U7 非阻塞, 收到即回 OK):
-         * 619步 @≈2ms/步 ≈1.24s + 500ms 余量, 否则提前发回程会被 U7 busy 拒
-         * (现象: 只走一段就停, ACK 极值为初始值) */
+        /* [2026-11-13] 等待须覆盖电机物理走完 (U7 非阻塞, 收到即回 OK):
+         * 9600步 @≈0.6ms/步 ≈5.9s (2000Hz 巡航 + 加减速), 取 1ms/步 留余量
+         * 否则提前发回程会被 U7 busy 拒 (现象: 只走一段就停, ACK 极值为初始值) */
         ac_deadline = HAL_GetTick() + ADC_CALIB_MOTOR_DELAY_MS
-                    + (uint32_t)ADC_CALIB_SWEEP_STEPS * 2U;
+                    + (uint32_t)ADC_CALIB_SWEEP_STEPS * 1U;
         ac_phase = AC_WAIT_FWD;
         return;
     }
@@ -103,7 +103,7 @@ void ADC_Calib_Run(void)
         if (ret == U7_PROTO_PENDING) return;
         if (ret != U7_PROTO_OK) { ac_fail = 1; ac_phase = AC_DONE; return; }
         ac_deadline = HAL_GetTick() + ADC_CALIB_MOTOR_DELAY_MS
-                    + (uint32_t)ADC_CALIB_SWEEP_STEPS * 2U;
+                    + (uint32_t)ADC_CALIB_SWEEP_STEPS * 1U;
         ac_phase = AC_WAIT_BACK;
         return;
     }
