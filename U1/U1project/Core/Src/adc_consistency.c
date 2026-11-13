@@ -35,6 +35,8 @@ static void ADC_ConsistencyCompare(uint8_t buf[3][16], uint8_t threshold,
             if (status == 0) continue;
             uint16_t raw = ((uint16_t)buf[chip][ch * 4 + 1] << 8)
                          |  (uint16_t)buf[chip][ch * 4 + 2];
+            /* 注: U4 的 CH3 标度补偿已在 ADC_Consistency_Start() 填缓冲时完成,
+             * 本函数拿到的三个芯片数据已统一标度, 直接比对即可。 */
             if (raw < min_raw) min_raw = raw;
             if (raw > max_raw) max_raw = raw;
             valid_count++;
@@ -81,9 +83,18 @@ uint8_t ADC_Consistency_Start(uint8_t threshold)
     {
         const uint16_t vals[3] = { u4_report.vo1, u4_report.vo2, u4_report.ams_adc };
         for (uint8_t i = 0; i < 3; i++) {
+            uint16_t v = vals[i];
+            /* [2026-11-13] U4 的 CH3(ams_adc) 标度补偿: 实测 U4 只有 U1/U7 同测点的
+             * 0.849~0.860 倍 (4 块板实测, 疑为 U4 PA6 处有分压)。此处统一换算到
+             * U1/U7 的标度 → ACK 里三芯片的值同标度、可直接互相对照, 判定也基于它。
+             * v ≤ 4095, ×117 = 479115 不溢出 uint32; ÷100 后 ≤ 4791 不溢出 uint16。 */
+            if (i == 2) {
+                v = (uint16_t)((uint32_t)v
+                               * ADC_CONSIST_U4_AMS_NUM / ADC_CONSIST_U4_AMS_DEN);
+            }
             adc_consist_buf[1][i * 4 + 0] = (uint8_t)(i + 1);
-            adc_consist_buf[1][i * 4 + 1] = (uint8_t)(vals[i] >> 8);
-            adc_consist_buf[1][i * 4 + 2] = (uint8_t)(vals[i]);
+            adc_consist_buf[1][i * 4 + 1] = (uint8_t)(v >> 8);
+            adc_consist_buf[1][i * 4 + 2] = (uint8_t)(v);
             adc_consist_buf[1][i * 4 + 3] = 1;
         }
         adc_consist_buf[1][3 * 4 + 0] = 4;   /* CH4 不在报文流 */

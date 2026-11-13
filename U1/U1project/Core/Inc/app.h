@@ -107,6 +107,11 @@ typedef enum {
 #define ADC_CONSISTENCY_TIMEOUT_MS         5000U /* 单芯片收集超时 */
 #define ADC_CONSISTENCY_RESULT_LEN         64U   /* 48B ADC + 16B 判定区 */
 #define ADC_CONSISTENCY_TOKEN_ALL          0x00U /* LEN=2 时 DATA[0] 为 0x00 表示全芯片 */
+/* [2026-11-13] U4 CH3(ams_adc) 标度补偿: 实测 U4 只有 U1/U7 同测点的 0.849~0.860 倍
+ * (4 块板实测, 离散 ±0.7%), 疑为 U4 PA6 处有分压。比对前乘 117/100 归一化,
+ * 否则 CH3 恒偏 ~290 LSB 必判 FAIL。★仅影响一致性比对, ACK 里仍回 U4 原始值。 */
+#define ADC_CONSIST_U4_AMS_NUM            117U   /* 分子 (实测反比 1/0.855 ≈ 1.17) */
+#define ADC_CONSIST_U4_AMS_DEN            100U   /* 分母 */
 
 /*===== ADC 极值自动校准 (CMD 0x0010) =====
  * 流程: 回零 → U4开始校准(0x11) → CCW去3mm → 等到位 → CW回3mm → 等到位
