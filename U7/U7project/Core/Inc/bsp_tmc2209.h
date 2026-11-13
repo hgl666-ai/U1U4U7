@@ -39,7 +39,16 @@
 #define TMC2209_REG_PWMCONF       ((uint8_t)0x70)
 #define TMC2209_REG_PWM_SCALE     ((uint8_t)0x71)
 #define TMC2209_REG_PWM_AUTO      ((uint8_t)0x72)
-#define U7_DEBUG    1   /* [2026-08-20] 调试总开关: 1=启用(串口调试输出) 0=关闭 */
+#define U7_DEBUG    0   /* [2026-11-13] ★量产版: 关闭 (此前为 1)。
+                         * 本开关同时控制三处, 关闭后协议链路才干净:
+                         *   ① protocol.c: 每收一帧向 USART1 直写 'P', 解析失败写 'F',
+                         *      Ping 'P' / GetADC 'G' / MotorStep "STEP ok, steps=N" /
+                         *      HandleHome 前后约 70~100 字节 ASCII —— 全部走 U1↔U7 协议线;
+                         *   ② bsp_motor.c: MOVE_DBG ("MOVE reject: BUSY" / "START_IT FAIL" 等);
+                         *   ③ main.c:150 上电是否跑 BSP_TMC_Test() 完整自检 (诊断用, 量产不需要)。
+                         * 关闭后 TMC 配置链不受影响 —— 由 #ifndef U7_SKIP_TMC_CFG 控制:
+                         *   BSP_TMC_Init → IsAlive → SetDefaults(逐寄存器读回验证+3轮重试) → Deinit
+                         * 现场诊断时改回 1 重新编译 (输出走 PA9, USB-TTL 监听)。 */
 
 /* [2026-08-21] TMC2209 调试打印独立开关: 默认 0=关闭。
  * ★原因: U7 上电 TMC 配置 (BSP_TMC_Test/SetDefaults 读回) 的 [DBG] 打印走 USART1

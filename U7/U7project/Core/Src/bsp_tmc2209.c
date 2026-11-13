@@ -424,11 +424,15 @@ uint8_t BSP_TMC_ReadReg(uint8_t reg, uint32_t *val)
     rx_mode();
     uint8_t resp[8];
     uint8_t rx_ok = 1;
-    uint8_t rx_fail = 0;
+#if U7_DEBUG
+    uint8_t rx_fail = 0;   /* [2026-11-13] 仅调试打印用, 包进 U7_DEBUG 避免量产版空警告 */
+#endif
     for (uint8_t i = 0; i < 8; i++) {
         if (!uart_rx(&resp[i], 10)) {   /* 10ms 超时/字节 */
             rx_ok = 0;
+#if U7_DEBUG
             rx_fail = i;
+#endif
             break;
         }
     }
@@ -688,9 +692,10 @@ uint8_t BSP_TMC_Test(void)
     tmc_print("\r\n");
 
     IHOLD_IRUN_reg_t ihold_irun = {0};
-    ihold_irun.bits.irun       = 16;   /* 最大 ~1.5A */
+    ihold_irun.bits.irun       = 20;   /* [2026-11-13] 与 SetDefaults 同步 (诊断值 ≈0.64A);
+                                        * 本路径在 U7_DEBUG=1 时上电先跑 */
     ihold_irun.bits.ihold      = 8;
-    ihold_irun.bits.iholddelay = 7;
+    ihold_irun.bits.iholddelay = 3;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
     tmc_print_reg("IHOLD_IRUN", TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
     tmc_print("\r\n");
@@ -836,16 +841,25 @@ uint8_t BSP_TMC_SetDefaults(void)
     } else { ok = 0; }
 
     IHOLD_IRUN_reg_t ihold_irun = {0};
-    /* [2026-08-19] 丢步修复: vsense=1(低量程)+irun=24 时电流仅 ≈0.59A RMS,
-     * 为电机额定 1.5A 的 39% → 力矩不足全程跳步。
-     * 采用 vsense=0(高量程) + irun=24 ≈1.05A RMS (70% 降额):
-     * 比原配置强 ~78% 又不过量; 曾试 irun=28 (~1.2A) 实测 TMC 发热 + 电机不转,
-     * 疑似电流过大触发过流/过热保护, 故保守取值, 实测不足再逐步上调
+    /* [2026-11-12] ★电机更换: 普菲德 0.5A 固定轴步进电机 (原为 1.5A 大机座)。
+     * 电流必须按新电机额定重算 —— 旧配置 vsense=0+irun=24, 按 TMC2209 手册公式
+     *   I_RMS = (IRUN+1)/32 × V_FS/(R_SENSE+0.02) × 1/√2   (R=110mΩ, V_FS=0.325V)
+     * ≈1.38A RMS, 是 0.5A 额定的 2.8 倍, 发热约 (2.8)²≈7.6 倍 → 必须降。
+     * 新配置: vsense=1(低量程, 小电流档分辨率更细) + irun=14
+     *   → ≈0.46A RMS (92% 额定); ihold=5 → ≈0.18A (保持力矩 ≈40% IRUN)。
+     * 台架调法: 丢步 → irun 每次 +2 (不超过 16); 到位置被负载拖走 → ihold 加 1~2。
+     * 注: 若实测采样电阻非 110mΩ, 实际电流按比例变化, 以钳表/采样压降实测为准。
+     * [历史·1.5A 电机时期, 已作废] [2026-08-19] vsense=1+irun=24 仅≈0.59A 力矩不足
+     *   → 改 vsense=0+irun=24; 曾试 irun=28 实测 TMC 发热且电机不转(疑过流/过温保护)。
      * [2026-08-19 15:5x] 手册 Rev1.03 p25 核对: IRUN=bit12:8, IHOLD=bit4:0,
      * IHOLDDELAY=bit19:16 (TMC2209 布局, 与 TMC2208 不同, 位域已按手册核实正确)
      * [2026-08-21] p25 标注 IHOLD_IRUN 为 W (只写): 读回恒 0 属正常, 无需验证 */
-    ihold_irun.bits.irun       = 24;
-    ihold_irun.bits.ihold      = 12;    /* 保持电流 ≈IRUN 的 33% (到位保持力矩), 不够再调 10~12 */
+    ihold_irun.bits.irun       = 20;    /* [2026-11-13] 诊断上调: 14(≈0.46A) → 20(≈0.64A)。
+                                         * 背景: 换 0.5A 电机后出现"发命令完全不动", 需分离
+                                         *   (a) 电机烧/无电流  与  (b) 电流偏小力矩不足。
+                                         * ★本值仅用于排查: 0.64A≈额定 1.28 倍, 确认能转后
+                                         *   必须回落到 irun=14 (≈0.46A) 再上产线。 */
+    ihold_irun.bits.ihold      = 8;     /* [2026-11-13] 同步上调 5→8 (≈0.28A), 便于手测保持力矩 */
     ihold_irun.bits.iholddelay = 3;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
 
@@ -858,7 +872,8 @@ uint8_t BSP_TMC_SetDefaults(void)
     chopconf.bits.hstrt     = 4;
     chopconf.bits.hend      = 1;
     chopconf.bits.tbl       = 2;
-    chopconf.bits.vsense    = 0;       /* [2026-08-19] 高电流量程 (丢步修复核心) */
+    chopconf.bits.vsense    = 1;       /* [2026-11-12] 低电流量程: 0.5A 小电机用低量程
+                                        * (每档 3.1%, 高量程每档 5.5%), 配合 irun=14 ≈0.46A */
     chopconf.bits.mres      = 4;       /* ★16 微步 = 3200 脉冲/圈, 与 U1 diam_calib 一致 */
     chopconf.bits.intpol    = 1;
     chopconf.bits.dedge     = 0;
