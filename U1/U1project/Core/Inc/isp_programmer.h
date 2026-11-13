@@ -43,4 +43,11 @@ ISP_Result_t ISP_WriteMemory(uint32_t address, uint8_t *data, uint16_t length);
 ISP_Result_t ISP_ReadMemory(uint32_t address, uint8_t *data, uint16_t length);
 ISP_Result_t ISP_Go(uint32_t address);
 
+/* [2026-11-14] U4 硬复位: BOOT0 拉低 → 复位脉冲(low_ms) → 等应用启动。
+ * 参数化脉宽, 便于"第一次短/后续长"的重试策略; 供烧录收尾与调试命令 0x0028 共用。
+ * ★现场根因: 复位释放后 NRST 只回到 2.3V (阈值 2.31V) → 芯片卡在临界点,
+ *   每次复位的结果会**确定性翻转**(好/坏交替)。所以正确策略是"复位→检查→失败再复位",
+ *   而不是固定打两次。根治仍需硬件给 NRST 加 10k 上拉。 */
+void U4_HardReset(uint16_t low_ms);
+
 #endif

@@ -268,6 +268,17 @@ static void APP_ProgramStep(void)
         return;
 
     case 4: /* 跳转运行 */
+        /* ★★ [2026-11-14 回滚] 恢复为最初的"单次复位 + ISP_Go"版本 ★★
+         * 回滚原因: 今天试过的所有改动(调整顺序/加长脉宽/双复位/带确认的重试循环)
+         *   在现场都没有更好, 其中"带确认的重试循环"还因为 U4_ScanPause 顺序问题
+         *   导致烧录卡死。既然复位翻转是硬件(NRST 停在 2.3V, 阈值 2.31V)决定的,
+         *   软件怎么调整都只是改变概率, 无法根治 —— 因此回到行为最可控的原始版本。
+         *
+         * 已知现象(未修复, 属硬件): 复位后 NRST 只回到 2.3V, 芯片卡在复位阈值上,
+         *   于是"每隔一次才进 app"(约 50% 成功率)。根治办法是在 U4 的 NRST 与 3.3V
+         *   之间加 10k 上拉电阻 (或减小 PB15→NRST 串阻 / 去掉对地下拉)。
+         *   软件侧保留两个不受影响的功能: 烧录成功判定只看 ISP 结果, 不受此影响;
+         *   调试命令 0x0028 仍可用来手动复位抢状态。 */
         ISP_Go(0x08000000);   /* 先试 Go 直接跳转 */
         /* [2026-08-11] ISP_Go 在 G0 可能不可靠; 且 BOOT0(PA8) 全程保持高电平,
          * 须拉低 BOOT0 + 复位, 让 U4 从 flash 正常启动应用 */
@@ -516,6 +527,32 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         raw[0] = u4_raw_valid ? APP_STATUS_OK : APP_STATUS_ERR_TIMEOUT;
         for (uint8_t i = 0; i < U4_REPORT_LEN; i++) raw[1 + i] = u4_raw_report[i];
         APP_SendAck(MGR_CMD_QUERY_U4_RAW, raw, (uint16_t)(1 + U4_REPORT_LEN));
+        break;
+    }
+
+    /* [2026-11-14] 调试: 给 U4 做一次硬复位, 不编程不擦除。
+     * ★改为与烧录收尾相同的"复位到确认活着"逻辑 (最多 3 次, 50/500/500ms):
+     *   若本命令能稳定让 U4 起来, 说明重试策略有效; 若仍交替, 说明单靠软件无解。
+     * 用法: 烧录后灯不闪时连发本命令, 看是否一次就点亮。 */
+    case MGR_CMD_RESET_U4: {
+        static const uint16_t reset_ms[3] = {50U, 500U, 500U};
+        uint8_t  u4_alive = 0;
+        uint8_t  attempt;
+        U4_UART_SetMode(1);
+        HAL_Delay(5);
+        U4_ScanPause(0);          /* ★先恢复扫描, 否则下面永远收不到报文 */
+        for (attempt = 0; attempt < 3U && !u4_alive; attempt++) {
+            U4_HardReset(reset_ms[attempt]);
+            u4_raw_valid = 0;
+            {
+                uint32_t t0 = HAL_GetTick();
+                while (HAL_GetTick() - t0 < 400U) {
+                    U4_Proto_Run();
+                    if (u4_raw_valid) { u4_alive = 1; break; }
+                }
+            }
+        }
+        { uint8_t e = APP_STATUS_OK; APP_SendAck(MGR_CMD_RESET_U4, &e, 1); }
         break;
     }
 

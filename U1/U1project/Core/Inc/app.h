@@ -44,6 +44,9 @@ typedef enum {
 #define MGR_CMD_MOTOR_BACK      0x0026   /* [2026-11-13] 电机后退固定步数 (不回零, 点动用) */
 #define MGR_CMD_QUERY_U4_RAW    0x0027   /* [2026-11-13] 调试: 读最后一帧 U4 0x30 原始 24B 载荷
                                           * ACK: LEN=00 19, DATA=[1B status][24B 原样载荷] */
+#define MGR_CMD_RESET_U4        0x0028   /* [2026-11-14] 调试: 单独给 U4 做一次硬复位
+                                          * (BOOT0低 + 复位脉冲), 用于隔离验证"复位是否生效"。
+                                          * 不编程、不擦除, 只复位。ACK 1B: 0x00 已执行 */
 #define MOTOR_JOG_STEPS           800U   /* 点动步数 = 0.5mm (800步 ÷ 1600步/mm)
                                           * [2026-11-13 ★重新标定] 原 1600 步按 3200步/mm 算,
                                           * 实测实际标定是 1600步/mm(见 ADC_CALIB_SWEEP_STEPS 注释),
