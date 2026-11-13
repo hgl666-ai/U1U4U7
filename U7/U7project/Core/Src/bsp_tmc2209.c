@@ -360,7 +360,22 @@ void BSP_TMC_Init(void)
 {
     tim3_uart_init();   /* 接管 TIM3, 硬件定时器替代 DWT */
     tx_mode();
-    /* 不做预同步: 首次 ReadReg 的首字节 0x05 自动锁定 autobaud (与 ESP32 一致) */
+
+    /* [2026-11-13] ★量产必须: PDN power-cycle 复位 TMC2209 autobaud。
+     * 原先这段只存在于 BSP_TMC_Test() (仅 U7_DEBUG=1 时编译执行), 量产版
+     * U7_DEBUG=0 把它整段删掉 → 上电少了这一步 → 后果链:
+     *   TMC2209 autobaud 一旦锁定就不会重新锁定 (除非掉电重启, 见下文测试步骤1注释),
+     *   上电若锁到错误波特率 → BSP_TMC_IsAlive() 恒失败 → main.c 的
+     *   SetDefaults() 整段被跳过 → pdn_disable / mstep_reg_select / IRUN 全不生效
+     *   → 电机无保持电流、发命令不动 (2026-11-13 实测: 换回大电机仍不动、手转轴无阻力)。
+     * ★该故障与电机型号、电流设定值完全无关, 且是静默的。
+     * 做法与 BSP_TMC_Test 步骤1 完全一致: 拉 PDN_UART LOW >2^18 时钟(~22ms)
+     * 触发掉电复位 autobaud → 释放 HIGH 唤醒, 首个 0x05 SYNC 重新锁定正确波特率。
+     * 代价: 上电多 150ms。 */
+    BSP_GPIO_Write(MOTO_TX_Port, MOTO_TX_Pin, 0);   /* PA7=LOW → PDN_UART=LOW (经 R42) */
+    HAL_Delay(50);                                   /* >21ms → 触发掉电, 复位 autobaud */
+    BSP_GPIO_Write(MOTO_TX_Port, MOTO_TX_Pin, 1);   /* PA7=HIGH → 唤醒 */
+    HAL_Delay(100);                                  /* 等内部振荡器稳定 (~1ms) + 余量 */
 }
 
 uint8_t BSP_TMC_WriteReg(uint8_t reg, uint32_t val)

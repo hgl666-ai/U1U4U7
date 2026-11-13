@@ -3,7 +3,7 @@
 <title>Static Call Graph - [U7project\U7project.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image U7project\U7project.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Fri Nov 13 12:43:28 2026
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Fri Nov 13 14:24:55 2026
 <BR><P>
 <H3>Maximum Stack Usage =        200 bytes + Unknown(Functions without stacksize, Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
@@ -497,7 +497,8 @@ Global Symbols
 <P><STRONG><a name="[5f]"></a>BSP_GPIO_Write</STRONG> (Thumb, 8 bytes, Stack size 0 bytes, bsp_gpio.o(i.BSP_GPIO_Write))
 <BR><BR>[Calls]<UL><LI><a href="#[5b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GPIO_WritePin
 </UL>
-<BR>[Called By]<UL><LI><a href="#[6d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;tx_mode
+<BR>[Called By]<UL><LI><a href="#[6b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;BSP_TMC_Init
+<LI><a href="#[6d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;tx_mode
 </UL>
 
 <P><STRONG><a name="[60]"></a>BSP_IN_Read</STRONG> (Thumb, 30 bytes, Stack size 0 bytes, bsp_gpio.o(i.BSP_IN_Read))
@@ -572,11 +573,13 @@ Global Symbols
 <BR>[Called By]<UL><LI><a href="#[42]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
 
-<P><STRONG><a name="[6b]"></a>BSP_TMC_Init</STRONG> (Thumb, 14 bytes, Stack size 8 bytes, bsp_tmc2209.o(i.BSP_TMC_Init))
+<P><STRONG><a name="[6b]"></a>BSP_TMC_Init</STRONG> (Thumb, 48 bytes, Stack size 8 bytes, bsp_tmc2209.o(i.BSP_TMC_Init))
 <BR><BR>[Stack]<UL><LI>Max Depth = 80<LI>Call Chain = BSP_TMC_Init &rArr; tx_mode &rArr; HAL_GPIO_Init
 </UL>
 <BR>[Calls]<UL><LI><a href="#[6d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;tx_mode
 <LI><a href="#[6c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;tim3_uart_init
+<LI><a href="#[5f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;BSP_GPIO_Write
+<LI><a href="#[51]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_Delay
 </UL>
 <BR>[Called By]<UL><LI><a href="#[42]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
@@ -802,6 +805,7 @@ Global Symbols
 </UL>
 <BR>[Called By]<UL><LI><a href="#[76]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;BSP_TMC_WriteRegVerified
 <LI><a href="#[75]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;BSP_TMC_WriteReg
+<LI><a href="#[6b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;BSP_TMC_Init
 <LI><a href="#[50]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;BSP_ADC_Init
 <LI><a href="#[42]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;main
 </UL>
