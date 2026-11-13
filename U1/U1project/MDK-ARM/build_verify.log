@@ -5,7 +5,7 @@ compiling app.c...
   static uint16_t deferred_seq    = 0;
 ..\Core\Src\app.c: 1 warning, 0 errors
 linking...
-Program Size: Code=32060 RO-data=408 RW-data=864 ZI-data=9096  
+Program Size: Code=31708 RO-data=408 RW-data=864 ZI-data=9096  
 FromELF: creating hex file...
 "U1project\U1project.axf" - 0 Error(s), 1 Warning(s).
-Build Time Elapsed:  00:00:01
+Build Time Elapsed:  00:00:02

@@ -110,6 +110,20 @@ void APP_Print(const char *str)
     }
 }
 
+/*===== [2026-11-14] TEST 流程调试打印开关 (省 Flash) =====
+ * U1 的 32KB Flash 已接近用满(只剩一百多字节), 为后续功能(SN 上报等)腾空间:
+ * 把工厂自测流程的纯调试字符串关掉。
+ * ★只影响 USB 打印内容, 不影响自测逻辑、判定结果和 ACK 帧。
+ * 现场需要看自测过程时, 把 TEST_PRINT_EN 改回 1 即可。 */
+#define TEST_PRINT_EN   0
+
+#if TEST_PRINT_EN
+  #define TP(s)   APP_Print(s)
+#else
+  #define TP(s)   do { } while (0)
+#endif
+
+#if TEST_PRINT_EN
 /* 极简 uint16→十进制字符串打印 (替代 snprintf %u/%d, 省 printf 引擎 ~1.2KB) */
 static void APP_PrintU16(uint16_t v)
 {
@@ -119,12 +133,13 @@ static void APP_PrintU16(uint16_t v)
     do { b[--i] = (char)('0' + v % 10); v /= 10; } while (v > 0);
     APP_Print(&b[i]);
 }
+#endif
 
 /* TEST 单项结果打印: ok=1 PASS / ok=0 FAIL (合并 10 处重复块, 省 Flash) */
 static void APP_TestResult(uint8_t ok)
 {
-    if (ok) APP_Print("  PASS\r\n");
-    else  { APP_Print("  FAIL\r\n"); test_fail = 1; }
+    if (ok) { TP("  PASS\r\n"); }
+    else    { TP("  FAIL\r\n"); test_fail = 1; }
 }
 
 /* ACK 帧: SEQ 回显请求序号 */
@@ -301,49 +316,49 @@ static void APP_TestStep(void)
     switch (test_step) {
 
     /*── U4 命令测试 (0x10-0x16, 0x20) ──*/
-    case 0:  APP_Print("[TEST] 0x10\r\n"); test_step++; break;
+    case 0:  TP("[TEST] 0x10\r\n"); test_step++; break;
     case 1:
         ret = U4_ZeroSensor();
         if (ret == U4_PROTO_PENDING) break;
         APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 2:  APP_Print("[TEST] 0x11\r\n"); test_step++; break;
+    case 2:  TP("[TEST] 0x11\r\n"); test_step++; break;
     case 3:
         ret = U4_StartCalib();
         if (ret == U4_PROTO_PENDING) break;
         APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 4:  APP_Print("[TEST] 0x12\r\n"); test_step++; break;
+    case 4:  TP("[TEST] 0x12\r\n"); test_step++; break;
     case 5:
         ret = U4_FinishCalib();
         if (ret == U4_PROTO_PENDING) break;
         APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 6:  APP_Print("[TEST] 0x13\r\n"); test_step++; break;
+    case 6:  TP("[TEST] 0x13\r\n"); test_step++; break;
     case 7:
         ret = U4_CancelCalib();
         if (ret == U4_PROTO_PENDING) break;
         APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 8:  APP_Print("[TEST] 0x14\r\n"); test_step++; break;
+    case 8:  TP("[TEST] 0x14\r\n"); test_step++; break;
     case 9:
         ret = U4_ReadFlashParam();
         if (ret == U4_PROTO_PENDING) break;
         APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 10: APP_Print("[TEST] 0x15\r\n"); test_step++; break;
+    case 10: TP("[TEST] 0x15\r\n"); test_step++; break;
     case 11:
         ret = U4_SaveFlashParam();
         if (ret == U4_PROTO_PENDING) break;
         APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 12: APP_Print("[TEST] 0x16\r\n"); test_step++; break;
+    case 12: TP("[TEST] 0x16\r\n"); test_step++; break;
     case 13:
         ret = U4_FactoryReset();
         if (ret == U4_PROTO_PENDING) break;
         APP_TestResult(ret == U4_PROTO_OK);
         test_step++; break;
-    case 14: APP_Print("[TEST] 0x20\r\n"); test_step++; break;
+    case 14: TP("[TEST] 0x20\r\n"); test_step++; break;
     case 15:
         ret = U4_AmsZero();
         if (ret == U4_PROTO_PENDING) break;
@@ -352,7 +367,7 @@ static void APP_TestStep(void)
     case 16:
         /* U4 在线时采集 4 路 ADC (VO1/VO2/AMS5600/VDD) 并以 CMD=0x0014 上报 */
         if (test_mode == 0 || test_mode == 1) {
-            APP_Print("[TEST] ADC\r\n");
+            TP("[TEST] ADC\r\n");
             APP_SendAdcResult();
         }
         test_step = (test_mode == 0) ? 17 : 23;
@@ -361,23 +376,25 @@ static void APP_TestStep(void)
     /*── U7 测试 ──*/
     case 17:
         BSP_U7_Enable();
-        APP_Print("[TEST] U7Ping\r\n"); test_step++; break;
+        TP("[TEST] U7Ping\r\n"); test_step++; break;
     case 18:
         ret = U7_Ping();
         if (ret == U7_PROTO_PENDING) break;
-        if (ret != U7_PROTO_OK) { APP_Print("  FAIL: U7 offline\r\n"); test_fail = 1; }
-        else                     { APP_Print("  PASS\r\n"); }
+        if (ret != U7_PROTO_OK) { TP("  FAIL: U7 offline\r\n"); test_fail = 1; }
+        else                     { TP("  PASS\r\n"); }
         test_step++; break;
-    case 19: APP_Print("[TEST] U7Ver\r\n"); test_step++; break;
+    case 19: TP("[TEST] U7Ver\r\n"); test_step++; break;
     case 20: {
         uint8_t maj, min;
         ret = U7_GetVersion(&maj, &min);
         if (ret == U7_PROTO_PENDING) break;
         if (ret != U7_PROTO_OK) { APP_TestResult(0); }
+#if TEST_PRINT_EN
         else { APP_Print("  v"); APP_PrintU16(maj); APP_Print("."); APP_PrintU16(min); APP_Print("\r\n"); }
+#endif
         test_step++; break;
     }
-    case 21: APP_Print("[TEST] U7Self\r\n"); test_step++; break;
+    case 21: TP("[TEST] U7Self\r\n"); test_step++; break;
     case 22: {
         uint8_t r;
         ret = U7_SelfTest(&r);
@@ -394,11 +411,11 @@ static void APP_TestStep(void)
                                 : (test_mode == 2) ? APP_CMD_TEST_U7
                                 : APP_CMD_TEST_ALL;
             if (test_fail) {
-                APP_Print("=== TEST RESULT: FAIL ===\r\n");
+                TP("=== TEST RESULT: FAIL ===\r\n");
                 uint8_t e = APP_STATUS_ERR_TEST; APP_SendAck(result_cmd, &e, 1);
                 APP_SetRGB(RGB_RED, 0);
             } else {
-                APP_Print("=== TEST RESULT: PASS ===\r\n");
+                TP("=== TEST RESULT: PASS ===\r\n");
                 uint8_t ok = APP_STATUS_OK; APP_SendAck(result_cmd, &ok, 1);
                 APP_SetRGB(RGB_GREEN, 0);
             }
@@ -553,6 +570,43 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
             }
         }
         { uint8_t e = APP_STATUS_OK; APP_SendAck(MGR_CMD_RESET_U4, &e, 1); }
+        break;
+    }
+
+    /* [2026-11-14] 读 U4 的 SN (芯片 96-bit UID), 供上位机在烧录前先取 SN。
+     * 流程: 暂停报文扫描 → 切 8E1 → ISP_Connect(BOOT0高+复位+0x7F)
+     *       → ISP 0x11 读 0x1FFF7590 的 12 字节 → 复位回应用 → 切回 8N1。
+     * ★为什么不用复位也能读: 空板本就停在 bootloader, 直接 0x7F 即可同步;
+     *   但已烧录的板子在跑应用, 必须复位才能进 bootloader, 所以统一走 ISP_Connect。
+     * ★读 UID 用的是系统存储区地址, 与 flash 内容无关 —— 空板/满板都能读。
+     * ★返回 17 字节: [status][01][UID 12B][XOR][00][00]。 */
+    case MGR_CMD_READ_SN: {
+        uint8_t sn[17];
+        uint8_t uid[SN_UID_LEN];
+        uint8_t i, xor_c = 0;
+
+        for (i = 0; i < 17U; i++) sn[i] = 0;
+        sn[0] = APP_STATUS_ERR_TIMEOUT;
+
+        U4_ScanPause(1);          /* 暂停报文扫描, 避免吃掉 ISP 的 0x79 响应 */
+        U4_UART_SetMode(0);       /* bootloader 用 8E1 */
+        if (ISP_Connect() == ISP_OK &&
+            ISP_ReadMemory(SN_UID_BASE, uid, SN_UID_LEN) == ISP_OK) {
+            for (i = 0; i < SN_UID_LEN; i++) xor_c ^= uid[i];
+            sn[0] = APP_STATUS_OK;
+            sn[1] = 0x01;                       /* SN 算法版本 */
+            for (i = 0; i < SN_UID_LEN; i++) sn[2 + i] = uid[i];
+            sn[14] = xor_c;                     /* UID 异或校验 */
+        }
+        /* 恢复: BOOT0 拉低 + 复位回应用 + 切回 8N1 + 恢复扫描 */
+        U4_BOOT0_LOW();
+        U4_RESET_LOW();
+        HAL_Delay(10);
+        U4_RESET_HIGH();
+        U4_UART_SetMode(1);
+        U4_ScanPause(0);
+
+        APP_SendAck(MGR_CMD_READ_SN, sn, 17);
         break;
     }
 
@@ -780,7 +834,10 @@ void APP_Init(void)
     SN_Report_Init();
 
     APP_SetRGB(RGB_WHITE, 0);
-    APP_Print("\r\n== U1 Jig Ready ==\r\n");
+    /* [2026-11-14] 开机横幅已注释 (用户要求): 上位机串口日志里不再出现
+     * "\r\n== U1 Jig Ready ==\r\n", 避免和协议帧混在一起干扰解析。
+     * 需要恢复时取消下面一行注释即可。 */
+    /* APP_Print("\r\n== U1 Jig Ready ==\r\n"); */
     app_state = APP_STATE_IDLE;
     APP_SetRGB(RGB_BLUE, 1);
 }
