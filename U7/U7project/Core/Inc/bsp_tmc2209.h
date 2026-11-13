@@ -348,6 +348,19 @@ uint8_t  BSP_TMC_WriteRegVerified(uint8_t reg, uint32_t val, uint32_t *readback)
 uint8_t  BSP_TMC_ReadReg(uint8_t reg, uint32_t *val);
 uint8_t  BSP_TMC_IsAlive(void);
 
+/* [2026-11-13] 默认运行/保持电流档位 (与 BSP_TMC_SetDefaults 内一致):
+ * ★ [2026-11-13] 17/6 (≈0.55A) → 8/4 (≈0.28A): 用户实测"电机持续运行有点烫",
+ *   降到与回零轻压相同的电流。0.28A = 0.6A 额定的 46%, 铜损降到原来的 26%。
+ *   I_RMS = (IRUN+1)/32 × V_FS/(R_SENSE+0.02) × 1/√2, vsense=1 → V_FS=0.180V, R=110mΩ
+ *   irun=8 → (9/32)×1.3846/√2 ≈ 0.275A; ihold=4 → ≈0.138A
+ * ★ 若出现丢步/带不动机构, 先上调到 10~12 (≈0.32~0.37A), 不要直接跳回 17。 */
+#define TMC_IRUN_DEFAULT       8U
+#define TMC_IHOLD_DEFAULT      4U
+
+void     BSP_TMC_SetRunCurrent(uint8_t irun, uint8_t ihold);
+                                        /* [2026-11-13] 运行时修改 IHOLD_IRUN (W-only 寄存器,
+                                         * 读回恒 0 故不验证)。用于回零时降流/回零后恢复 */
+
 /* 暴露给 motor test 做 STEP 验证: 临时切 TIM3 到 UART 模式读写寄存器 */
 void     BSP_TMC_UARTMode(void);      /* 保存 PWM 状态, 切自由计数 */
 void     BSP_TMC_PWMMode(void);       /* 恢复 PWM 状态 */

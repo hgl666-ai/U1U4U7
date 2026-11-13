@@ -134,12 +134,20 @@ static void HandleHome(void)
     motor_dbg_print_u16(BSP_IN_Read(2));
     motor_dbg_print("\r\n");
 #endif
+    /* [2026-11-13] ★★ 严禁在此调用 BSP_TMC_SetRunCurrent / BSP_TMC_WriteReg ★★
+     * 根因: BSP_TMC_WriteReg() 内部 tx_mode() 会把 TIM3 从 PWM 切成 UART 模式,
+     *       且**不切回**。之后 BSP_Motor_Move 的 STEP 脉冲发不出来 → 电机完全不动;
+     *       TIM3 中断也不触发 → home_done/home_fail 永不置位 → HandleHome 卡在
+     *       下方 35s 等待循环 → 表现为"发 0x0012 后既没有 ACK 也没有动作"。
+     * 现状: 默认运行电流 TMC_IRUN_DEFAULT 已等于回零轻压电流 MOTOR_HOME_PRESS_IRUN
+     *       (都是 8/4 ≈0.28A), 因此回零**不需要**在运行时改电流。 */
     BSP_Motor_Home();
     uint32_t t0 = HAL_GetTick();
     while (!BSP_Motor_HomeDone() && !BSP_Motor_HomeFail()) {
         if (HAL_GetTick() - t0 > 35000) break;   /* [2026-11-13] 8000→35000ms: 换 20mm 丝杆电机(导程1mm,
                                                   * 行程12.7mm=42000步) 后 @1500Hz 全程约 28s + 斜坡 */
     }
+    /* [2026-11-13] 见上: 回零后也不要在这里改电流 (同样会破坏 TIM3 PWM 状态) */
     /* [2026-08-20] 兜底超时后强制停机: 若电机仍在转 (busy 残留=1),
      * 后续所有 MotorStep/HOME 会被拒 → "成功一次后电机不动但有力" */
     if (BSP_Motor_IsBusy()) BSP_Motor_Stop();

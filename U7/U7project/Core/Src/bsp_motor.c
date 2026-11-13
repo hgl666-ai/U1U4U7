@@ -205,10 +205,20 @@ void BSP_Motor_Home(void)
     home_skip = MOTOR_HOME_SKIP_FIRST;
     home_in1_cnt = 0; home_in2_cnt = 0;
     home_in2_armed = 0;   /* [2026-11-13] 若起步就压在 IN2 上, 先离开再武装, 否则无法脱困 */
+#if MOTOR_HOME_NO_SWITCH
+    /* [2026-11-13] ★无开关模式: 朝零点挡块"轻压" PRESS_STEPS 步。
+     * 走满由 ISR 置 home_done=1 (见 HAL_TIM_PeriodElapsedCallback 到位分支)。
+     * 电流已在 HandleHome() 降到 MOTOR_HOME_PRESS_IRUN, 顶住力仅 ≈27N。
+     * IN1/IN2 检测仍然保留 (若日后装上开关, 会自动提前停在开关处, 双重保险)。 */
+    if (!BSP_Motor_Move(MOTOR_HOME_DIR, MOTOR_HOME_PRESS_STEPS, MOTOR_HOME_PRESS_HZ)) {
+        home_active = 0; home_fail = 1;   /* 启动被拒 (busy/参数) → 失败 */
+    }
+#else
     /* [2026-11-13] 速度 2500Hz ≠ F_START(500) → 会走加减速斜坡 (500→2500Hz) */
     if (!BSP_Motor_Move(MOTOR_HOME_DIR, MOTOR_HOME_MAX_STEPS, MOTOR_HOME_SPEED_HZ)) {
         home_active = 0; home_fail = 1;   /* 启动被拒 (busy/参数) → 失败 */
     }
+#endif
 }
 
 uint8_t BSP_Motor_HomeDone(void)
@@ -297,7 +307,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     /*── 到位: 停 PWM, 保持 EN 低 (TMC 以 IHOLD 保持力矩) ──*/
     if (motor_count >= motor_target) {
+#if MOTOR_HOME_NO_SWITCH
+        /* [2026-11-13] 无开关模式: 走满轻压步数 = 已顶到机械挡块 → 零点建立 (成功) */
+        if (home_active) { home_active = 0; home_done = 1; }
+#else
         if (home_active) { home_active = 0; home_fail = 1; }  /* 最大步数未触发 = 超时失败 */
+#endif
         /* [2026-08-19 16:4x] ★最终根因（U7_DEBUG 实证 "MOVE reject: START_IT FAIL"）:
          * 本工程 HAL 为 v1.10+，HAL_TIM_PWM_Start_IT 检查的是**通道级状态**
          * TIM_CHANNEL_STATE_GET(ChannelState[])（非旧版 htim->State），不匹配则

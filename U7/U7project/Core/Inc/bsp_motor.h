@@ -60,8 +60,12 @@
  *   这里统一取反后, 不变式自动保持, U1 侧无需改动。
  *
  * 若改为硬件修正 (把某一相的 A+/A- 或 B+/B- 对调), 请把本值改回 0。
- * 1 = 取反, 0 = 不取反 */
-#define MOTOR_DIR_INVERT      1
+ * 1 = 取反, 0 = 不取反
+ * ★ [2026-11-13 20:50] 实测 0x0012 回零朝【前】走 (8.78s/8000步正常完成, ACK=00),
+ *   但零点在【后】→ 本值 1→0 关闭全局取反。
+ *   改后各动作的物理方向: 回零 → 后 ; 定位(0x0010/0x0011/0x0013) → 前 ;
+ *   点动 0x0025 → 前 , 0x0026 → 后 (与改前相反, 命令大全已同步)。 */
+#define MOTOR_DIR_INVERT      0
 
 #define MOTOR_HOME_DIR        MOTOR_DIR_CW    /* 逻辑方向=找零点侧 (物理方向已由 MOTOR_DIR_INVERT 取反) */
 #define MOTOR_HOME_SPEED_HZ   1500U           /* [2026-11-13] 4000→2500→1500 (实测 4000 偏快/嗡嗡);
@@ -70,6 +74,22 @@
                                                * 旧 3200 步在 1mm 导程下只有 1mm, 必然回零超时 */
 #define MOTOR_HOME_SKIP_FIRST 40U             /* 前 40 步不检测 (~16ms @2500Hz, 与旧 8步@500Hz 等效) */
 #define MOTOR_HOME_DEBOUNCE   20U             /* 连续 20 步触发才确认 (~8ms @2500Hz, 与旧 4步@500Hz 等效) */
+
+/*===== [2026-11-13] ★无限位开关模式: 靠机械挡块"轻压"建立零点 =====
+ * 现场: IN1/IN2 均未安装 (内部上拉, 悬空恒读 1, 永远不会触发), 但丝杆两端都有机械挡块。
+ * 做法: 朝零点侧挡块以【低电流】走 PRESS_STEPS 步; 走满即认为已顶到挡块,
+ *       由 ISR 置 home_done=1 (而不是 home_fail=1)。
+ *       顶住时电机只是低力矩空转丢步, 27N 远低于挡块承受能力, 不会压坏机构。
+ * 前提: 上电时物件贴在零点侧挡块上 (或距挡块 < PRESS_STEPS 对应行程 2.5mm)。
+ *       ★若物件停在行程中间, 走 2.5mm 后并未到达挡块 → 零点为"假零点"
+ *         (③ ADC 极值测试仍然安全, 因为它只需 3mm 扫描; 但 ④ 测径/0x0013 定点会偏)。
+ * 方向: 必须朝零点挡块。方向反了也只会走 2.5mm, 不会顶坏, 但零点位置错误。
+ *       ★上机前务必先用 0x0025(后退)/0x0026(前进) 点动确认方向 (每次 0.5mm, 绝对安全)。 */
+#define MOTOR_HOME_NO_SWITCH     1            /* 1=无开关模式 (走满即判零点); 0=传统靠 IN1 停 */
+#define MOTOR_HOME_PRESS_STEPS   8000U        /* 轻压行程 = 2.5mm (3200 步/mm), 覆盖手放误差 */
+#define MOTOR_HOME_PRESS_HZ      1000U        /* 轻压速度 0.31mm/s, 走满约 8s */
+#define MOTOR_HOME_PRESS_IRUN    8U           /* 轻压电流 ≈0.28A (0.6A 额定 46%), 顶住力 ≈27N */
+#define MOTOR_HOME_PRESS_IHOLD   4U           /* 轻压保持电流 ≈0.14A */
 
 void     BSP_Motor_Init(void);
 uint8_t  BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz);  /* 1=已启动 0=拒绝(busy/参数) */

@@ -616,14 +616,20 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
     }
 
     /* [2026-11-13] 电机点动: 前进/后退固定步数, **不回零** (手动定位/调试用)
-     *   前进 = U7_MOTOR_CCW (与 0x0013 定点移动同向)
-     *   后退 = U7_MOTOR_CW
+     *   ★ [2026-11-13 20:5x] 方向映射修正: 用户确认 0x0025 必须是**后退**、
+     *     0x0026 必须是**前进** (U7 侧 MOTOR_DIR_INVERT 已改为 0, 物理方向:
+     *     CW/0 → 后退, CCW/1 → 前进)。因此:
+     *       0x0025 (MGR_CMD_MOTOR_FWD)  → U7_MOTOR_CW  (0) → 物理后退
+     *       0x0026 (MGR_CMD_MOTOR_BACK) → U7_MOTOR_CCW (1) → 物理前进
+     *     ★注意: 命令名 FWD/BACK 与实际物理方向相反, 这是历史命名遗留,
+     *       以"命令码 → 物理方向"为准 (见命令大全 14-septies)。
+     *     ★与定位移动的关系: 0x0010/0x0011/0x0013 用 CCW = 前进 (离开零点);
+     *       回零用 CW = 后退 (朝零点挡块) —— 不变式【回零方向 ≠ 定位方向】仍然成立。
      * U7 收到指令即回 ACK (移动在后台 ISR 里继续), 故这里本地空转 U7 会话
-     * 几 ms 拿到结果后立即回 1B 状态; 失败(U7 忙/超时)回 0x05。
-     * U1 Flash 仅剩 420B, 因此阻塞等会话而不用 deferred 机制。 */
+     * 几 ms 拿到结果后立即回 1B 状态; 失败(U7 忙/超时)回 0x05。 */
     case MGR_CMD_MOTOR_FWD:
     case MGR_CMD_MOTOR_BACK: {
-        uint8_t d   = (cmd == MGR_CMD_MOTOR_FWD) ? U7_MOTOR_CCW : U7_MOTOR_CW;
+        uint8_t d   = (cmd == MGR_CMD_MOTOR_FWD) ? U7_MOTOR_CW : U7_MOTOR_CCW;
         int     ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, d, MOTOR_JOG_STEPS);
         while (ret == U7_PROTO_PENDING) {
             U7_Proto_Run();

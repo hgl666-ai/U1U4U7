@@ -42,7 +42,14 @@ uint8_t ADC_Calib_Start(void)
 {
     if (ac_phase != AC_IDLE) return 1;  /* BUSY */
 
+#if ADC_CALIB_SKIP_HOME
+    /* [2026-11-13] 跳过回零: 物件已由操作员推到后挡块(零点)。
+     * 回零只会以 0.28A 空顶挡块约 8s, 且其 2.5mm 轻压会把起点推离零点。
+     * 零点靠"回程多走 1mm 顶住后挡块"自校正 (见 ADC_CALIB_RETURN_STEPS)。 */
+    ac_phase   = AC_START_CALIB;
+#else
     ac_phase   = AC_HOME;
+#endif
     ac_fail    = 0;
     ac_max1 = ac_max2 = 0;
     ac_min1 = ac_min2 = 0xFFFF;
@@ -58,6 +65,7 @@ void ADC_Calib_Run(void)
 {
     if (ac_phase == AC_IDLE) return;
 
+#if !ADC_CALIB_SKIP_HOME
     /*── 回零 ──*/
     if (ac_phase == AC_HOME) {
         int ret = U7_Home();
@@ -66,6 +74,7 @@ void ADC_Calib_Run(void)
         ac_phase = AC_START_CALIB;
         return;
     }
+#endif
 
     /*── U4 开始校准 (0x11) ──*/
     if (ac_phase == AC_START_CALIB) {
@@ -97,13 +106,13 @@ void ADC_Calib_Run(void)
         return;
     }
 
-    /*── 回程: CW 走回 3mm 到零点 (严格往复) ──*/
+    /*── [2026-11-13] 回程: CW 多走 1mm (4mm) 故意顶住后挡块 → 自动复位零点 ──*/
     if (ac_phase == AC_MOVE_BACK) {
-        int ret = U7_MotorStep(ADC_CALIB_MOTOR_ID, U7_MOTOR_CW, ADC_CALIB_SWEEP_STEPS);
+        int ret = U7_MotorStep(ADC_CALIB_MOTOR_ID, U7_MOTOR_CW, ADC_CALIB_RETURN_STEPS);
         if (ret == U7_PROTO_PENDING) return;
         if (ret != U7_PROTO_OK) { ac_fail = 1; ac_phase = AC_DONE; return; }
         ac_deadline = HAL_GetTick() + ADC_CALIB_MOTOR_DELAY_MS
-                    + (uint32_t)ADC_CALIB_SWEEP_STEPS * 1U;
+                    + (uint32_t)ADC_CALIB_RETURN_STEPS * 1U;
         ac_phase = AC_WAIT_BACK;
         return;
     }

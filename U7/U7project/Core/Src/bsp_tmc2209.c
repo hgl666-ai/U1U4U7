@@ -393,6 +393,32 @@ uint8_t BSP_TMC_WriteReg(uint8_t reg, uint32_t val)
     return 1;
 }
 
+/**
+  * @brief  [2026-11-13] 运行时修改运行/保持电流 (IHOLD_IRUN)
+  * @param  irun : 运行电流档位 0~31
+  * @param  ihold: 保持电流档位 0~31
+  * @note   用于回零时降流 (顶住机械挡块时力矩更小、更安全), 回零结束后恢复默认。
+  *         IHOLD_IRUN 为 W-only 寄存器 (p25, 读回恒 0), 故不做读回验证。
+  *         IHOLDDELAY 固定 3, 与 BSP_TMC_SetDefaults 保持一致。
+  *
+  *         ★★★ 严重警告: 本函数内部调用 BSP_TMC_WriteReg() → tx_mode(),
+  *         会把 TIM3 从 **PWM 模式切到 UART 模式且不切回**。
+  *         因此**只能在电机 PWM 启动之前 (初始化阶段) 调用**;
+  *         若在运行期调用, 必须紧接着重新初始化 TIM3 的 PWM 模式
+  *         (参考 BSP_TMC_Deinit / BSP_Motor_Init 的做法), 否则后续所有
+  *         BSP_Motor_Move 都发不出 STEP 脉冲 → 电机完全不动、ISR 不触发。
+  *         [2026-11-13] 曾因在 HandleHome() 里调用本函数导致
+  *         "发 0x0012 既无 ACK 也无动作", 已从该处移除。
+  */
+void BSP_TMC_SetRunCurrent(uint8_t irun, uint8_t ihold)
+{
+    IHOLD_IRUN_reg_t r = {0};
+    r.bits.irun       = (uint32_t)(irun  & 0x1FU);
+    r.bits.ihold      = (uint32_t)(ihold & 0x1FU);
+    r.bits.iholddelay = 3U;
+    BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, r.raw);
+}
+
 /* [2026-08-21] ★TMC 配置可靠性修复核心:
  * TMC2209 写命令不返回响应, 无法从写本身确认成功。此前 SetDefaults 只发不验,
  * 上电偶发写入失败 → mstep_reg_select/mres 未生效 → 微步在 16(3200步/圈) 与
@@ -707,9 +733,9 @@ uint8_t BSP_TMC_Test(void)
     tmc_print("\r\n");
 
     IHOLD_IRUN_reg_t ihold_irun = {0};
-    ihold_irun.bits.irun       = 17;   /* 与 SetDefaults 同步 (0.6A 电机 ≈0.55A);
-                                        * 本路径在 U7_DEBUG=1 时上电先跑 */
-    ihold_irun.bits.ihold      = 6;
+    ihold_irun.bits.irun       = TMC_IRUN_DEFAULT;    /* 与 SetDefaults 同步 (2026-11-13: 0.28A);
+                                                       * 本路径仅在 U7_DEBUG=1 时上电先跑 */
+    ihold_irun.bits.ihold      = TMC_IHOLD_DEFAULT;
     ihold_irun.bits.iholddelay = 3;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
     tmc_print_reg("IHOLD_IRUN", TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
@@ -870,9 +896,13 @@ uint8_t BSP_TMC_SetDefaults(void)
      *   曾试 irun=28 实测 TMC 发热且电机不转(疑过流/过温保护)。
      * [2026-08-19 15:5x] 手册 Rev1.03 p25 核对: IRUN=bit12:8, IHOLD=bit4:0,
      * IHOLDDELAY=bit19:16 (TMC2209 布局, 与 TMC2208 不同, 位域已按手册核实正确)
-     * [2026-08-21] p25 标注 IHOLD_IRUN 为 W (只写): 读回恒 0 属正常, 无需验证 */
-    ihold_irun.bits.irun       = 17;    /* 0.6A 电机: ≈0.55A RMS (92%) @vsense=1, R=110mΩ */
-    ihold_irun.bits.ihold      = 6;     /* 保持 ≈0.21A (39% IRUN) */
+     * [2026-08-21] p25 标注 IHOLD_IRUN 为 W (只写): 读回恒 0 属正常, 无需验证
+     * ★ [2026-11-13] 电流下调: irun 17→8 (≈0.55A→≈0.28A), ihold 6→4 (≈0.14A)。
+     *   原因: 用户实测"电机持续运行有点烫"。0.28A = 0.6A 额定 46%, 铜损降至 26%。
+     *   与回零轻压电流 (MOTOR_HOME_PRESS_IRUN=8) 保持一致, 全流程同一电流。
+     *   若实测丢步/带不动: 先试 irun=10~12 (≈0.32~0.37A), 不要直接跳回 17。 */
+    ihold_irun.bits.irun       = TMC_IRUN_DEFAULT;    /* 8 → ≈0.28A RMS @vsense=1, R=110mΩ */
+    ihold_irun.bits.ihold      = TMC_IHOLD_DEFAULT;   /* 4 → ≈0.14A (50% IRUN) */
     ihold_irun.bits.iholddelay = 3;
     BSP_TMC_WriteReg(TMC2209_REG_IHOLD_IRUN, ihold_irun.raw);
 
