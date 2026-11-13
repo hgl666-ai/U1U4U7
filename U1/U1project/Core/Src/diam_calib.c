@@ -13,7 +13,8 @@
  * direction: home stops at CW limit (IN1), move must use CCW into travel area
  */
 enum { DC_IDLE = 0, DC_HOME, DC_ZERO, DC_SETOFFSET, DC_MOVE,
-       DC_WAIT_MOVE, DC_DELAY, DC_READ, DC_NEXT, DC_DONE };
+       DC_WAIT_MOVE, DC_DELAY, DC_READ, DC_NEXT,
+       DC_RETURN, DC_WAIT_RETURN, DC_DONE };   /* [2026-11-13] 新增 RETURN/RETURN_WAIT */
 
 static const uint16_t dc_target_um[DIAM_CALIB_POS_COUNT] = {1000, 1500, 2000};
 
@@ -47,7 +48,12 @@ uint8_t DiamCalib_Start(void)
 {
     if (dc_phase != DC_IDLE) return 1;  /* BUSY */
 
+#if DIAM_CALIB_SKIP_HOME
+    /* [2026-11-13] 跳过回零: 执行顺序 ③→④, ③ 结束已把物件送回后挡块(零点) */
+    dc_phase   = DC_ZERO;
+#else
     dc_phase   = DC_HOME;
+#endif
     dc_pos_idx = 0;
     /* clear results (all FAIL default) */
     for (uint8_t i = 0; i < DIAM_CALIB_POS_COUNT; i++) {
@@ -67,6 +73,7 @@ void DiamCalib_Run(void)
 {
     if (dc_phase == DC_IDLE) return;
 
+#if !DIAM_CALIB_SKIP_HOME
     /*-- HOME: motor home (CW to IN1, motor_pos=0) --*/
     if (dc_phase == DC_HOME) {
         int ret = U7_Home();
@@ -75,6 +82,7 @@ void DiamCalib_Run(void)
         dc_phase = DC_ZERO;
         return;
     }
+#endif
 
     /*-- ZERO: U4 sensor zero --*/
     if (dc_phase == DC_ZERO) {
@@ -165,8 +173,32 @@ void DiamCalib_Run(void)
         if (dc_pos_idx < DIAM_CALIB_POS_COUNT) {
             dc_phase = DC_MOVE;
         } else {
-            dc_phase = DC_DONE;
+            /* [2026-11-13] 三个位置测完 → 先把物件送回零点, 再出结果 */
+            dc_phase = DC_RETURN;
         }
+        return;
+    }
+
+    /*-- [2026-11-13] RETURN: 退 2.5mm 顶住后挡块, 把物件送回零点 (供下一项测试直接启动) --*/
+    if (dc_phase == DC_RETURN) {
+        int ret = U7_MotorStep(DIAM_CALIB_MOTOR_ID, U7_MOTOR_CW, DIAM_CALIB_RETURN_STEPS);
+        if (ret == U7_PROTO_PENDING) return;
+        if (ret != U7_PROTO_OK) {
+            /* 回程失败: 仍返回测量结果, 但物件不在零点 —— 下一项测试会因此失败,
+             * 相当于"用下一项的失败来暴露本次回程失败"(ACK 无多余字段可标记) */
+            dc_phase = DC_DONE;
+            return;
+        }
+        mv_deadline = HAL_GetTick() + DIAM_CALIB_MOTOR_DELAY_MS
+                    + (uint32_t)DIAM_CALIB_RETURN_STEPS * 1U;
+        dc_phase = DC_WAIT_RETURN;
+        return;
+    }
+
+    /*-- [2026-11-13] WAIT_RETURN: 等回程走完 --*/
+    if (dc_phase == DC_WAIT_RETURN) {
+        if (HAL_GetTick() < mv_deadline) return;
+        dc_phase = DC_DONE;
         return;
     }
 

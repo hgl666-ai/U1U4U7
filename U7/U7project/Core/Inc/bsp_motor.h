@@ -86,8 +86,11 @@
  * 方向: 必须朝零点挡块。方向反了也只会走 2.5mm, 不会顶坏, 但零点位置错误。
  *       ★上机前务必先用 0x0025(后退)/0x0026(前进) 点动确认方向 (每次 0.5mm, 绝对安全)。 */
 #define MOTOR_HOME_NO_SWITCH     1            /* 1=无开关模式 (走满即判零点); 0=传统靠 IN1 停 */
-#define MOTOR_HOME_PRESS_STEPS   8000U        /* 轻压行程 = 2.5mm (3200 步/mm), 覆盖手放误差 */
-#define MOTOR_HOME_PRESS_HZ      1000U        /* 轻压速度 0.31mm/s, 走满约 8s */
+#define MOTOR_HOME_PRESS_STEPS   6400U        /* [2026-11-13 ★重新标定] 轻压行程 4mm
+                                               * 实测标定 1600 步/mm (不是 3200) → 6400 步 = 4mm,
+                                               * 覆盖 4.2mm 机槽的整个可用行程, 任何起点都能顶到挡块。
+                                               * 原 8000 步(=5mm) 在新标定下会超出行程 0.8mm。 */
+#define MOTOR_HOME_PRESS_HZ      1000U        /* 轻压速度 0.31mm/s, 走满约 6.4s */
 #define MOTOR_HOME_PRESS_IRUN    8U           /* 轻压电流 ≈0.28A (0.6A 额定 46%), 顶住力 ≈27N */
 #define MOTOR_HOME_PRESS_IHOLD   4U           /* 轻压保持电流 ≈0.14A */
 

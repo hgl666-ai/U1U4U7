@@ -53,6 +53,13 @@ typedef struct {
 extern U4_ReportData u4_report;
 extern uint8_t       u4_report_fresh;  /* 1=有新报文待读, 上层读后清零 */
 
+/* [2026-11-13] 调试用: 最后一帧 0x30 的**原始 24 字节载荷**(未经解析, 大端原样),
+ * 配合 CMD=0x0027 回传给 PC, 用于现场确认 position / angle_acc / raw_length
+ * 等字段的真实变化 (④ 测径判据定位用)。 */
+#define U4_REPORT_LEN       24U
+extern uint8_t       u4_raw_report[U4_REPORT_LEN];
+extern uint8_t       u4_raw_valid;     /* 1=至少收到过一帧 */
+
 void U4_Proto_Init(void);
 void U4_Proto_Run(void);
 void U4_ScanPause(uint8_t pause);   /* 1=暂停空闲报文扫描 (ISP 期间调用) */

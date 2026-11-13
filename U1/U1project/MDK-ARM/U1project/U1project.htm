@@ -3,7 +3,7 @@
 <title>Static Call Graph - [U1project\U1project.axf]</title></head>
 <body><HR>
 <H1>Static Call Graph for image U1project\U1project.axf</H1><HR>
-<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Fri Nov 13 21:26:29 2026
+<BR><P>#&#060CALLGRAPH&#062# ARM Linker, 5060960: Last Updated: Fri Nov 13 23:40:21 2026
 <BR><P>
 <H3>Maximum Stack Usage =       1032 bytes + Unknown(Cycles, Untraceable Function Pointers)</H3><H3>
 Call chain for Maximum Stack Depth:</H3>
@@ -245,6 +245,7 @@ Global Symbols
 <LI><a href="#[b9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Frame_Build_1B_LE
 <LI><a href="#[63]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ReadAllADC
 <LI><a href="#[130]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_SendCmd_Start
+<LI><a href="#[132]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ParseReport
 </UL>
 
 <P><STRONG><a name="[165]"></a>__aeabi_memcpy4</STRONG> (Thumb, 0 bytes, Stack size 0 bytes, memcpya.o(.text), UNUSED)
@@ -272,7 +273,7 @@ Global Symbols
 <P><STRONG><a name="[12f]"></a>__aeabi_memclr4</STRONG> (Thumb, 0 bytes, Stack size 0 bytes, memseta.o(.text))
 <BR><BR>[Called By]<UL><LI><a href="#[138]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Proto_Init
 <LI><a href="#[12e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;SystemClock_Config
-<LI><a href="#[132]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Init
+<LI><a href="#[133]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Init
 </UL>
 
 <P><STRONG><a name="[169]"></a>__aeabi_memclr8</STRONG> (Thumb, 0 bytes, Stack size 0 bytes, memseta.o(.text), UNUSED)
@@ -640,11 +641,10 @@ Global Symbols
 <LI><a href="#[61]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Dispatch
 </UL>
 
-<P><STRONG><a name="[8e]"></a>DiamCalib_Run</STRONG> (Thumb, 486 bytes, Stack size 64 bytes, diam_calib.o(i.DiamCalib_Run))
+<P><STRONG><a name="[8e]"></a>DiamCalib_Run</STRONG> (Thumb, 528 bytes, Stack size 64 bytes, diam_calib.o(i.DiamCalib_Run))
 <BR><BR>[Stack]<UL><LI>Max Depth = 424<LI>Call Chain = DiamCalib_Run &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[55]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_MotorStep
-<LI><a href="#[6d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Home
 <LI><a href="#[56]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
 <LI><a href="#[53]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_SendAck
 <LI><a href="#[96]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ZeroSensor
@@ -752,7 +752,7 @@ Global Symbols
 <LI><a href="#[5a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_memcpy
 </UL>
 <BR>[Called By]<UL><LI><a href="#[8d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Run
-<LI><a href="#[133]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
+<LI><a href="#[134]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
 </UL>
 
 <P><STRONG><a name="[66]"></a>FwUpload_Handle</STRONG> (Thumb, 512 bytes, Stack size 64 bytes, fw_upload.o(i.FwUpload_Handle))
@@ -1688,7 +1688,7 @@ Global Symbols
 <LI><a href="#[61]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Dispatch
 </UL>
 
-<P><STRONG><a name="[132]"></a>U4_Proto_Init</STRONG> (Thumb, 46 bytes, Stack size 16 bytes, protocol_u4.o(i.U4_Proto_Init))
+<P><STRONG><a name="[133]"></a>U4_Proto_Init</STRONG> (Thumb, 46 bytes, Stack size 16 bytes, protocol_u4.o(i.U4_Proto_Init))
 <BR><BR>[Stack]<UL><LI>Max Depth = 16<LI>Call Chain = U4_Proto_Init
 </UL>
 <BR>[Calls]<UL><LI><a href="#[ac]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;UART_ClearBuffer
@@ -1707,8 +1707,8 @@ Global Symbols
 <LI><a href="#[56]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;HAL_GetTick
 <LI><a href="#[bb]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Frame_Parse_1B_LE
 <LI><a href="#[b9]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Frame_Build_1B_LE
-<LI><a href="#[133]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
-<LI><a href="#[134]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ParseReport
+<LI><a href="#[134]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
+<LI><a href="#[132]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ParseReport
 </UL>
 <BR>[Called By]<UL><LI><a href="#[88]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
 </UL>
@@ -1825,8 +1825,7 @@ Global Symbols
 <BR>[Calls]<UL><LI><a href="#[136]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_SendCmd_Start
 <LI><a href="#[137]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_SendCmd_Result
 </UL>
-<BR>[Called By]<UL><LI><a href="#[8e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;DiamCalib_Run
-<LI><a href="#[88]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
+<BR>[Called By]<UL><LI><a href="#[88]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
 <LI><a href="#[8f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;MotorSeq_Run
 <LI><a href="#[61]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Dispatch
 </UL>
@@ -1892,7 +1891,7 @@ Global Symbols
 <LI><a href="#[6f]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_UART_SetMode
 <LI><a href="#[ab]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;BSP_UART_Init
 <LI><a href="#[8d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Run
-<LI><a href="#[132]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Init
+<LI><a href="#[133]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Init
 </UL>
 
 <P><STRONG><a name="[135]"></a>UART_ReadByte</STRONG> (Thumb, 64 bytes, Stack size 12 bytes, bsp_uart.o(i.UART_ReadByte))
@@ -1902,7 +1901,7 @@ Global Symbols
 </UL>
 <BR>[Called By]<UL><LI><a href="#[6e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Proto_Run
 <LI><a href="#[8d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Run
-<LI><a href="#[133]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
+<LI><a href="#[134]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
 </UL>
 
 <P><STRONG><a name="[11e]"></a>UART_SendArray</STRONG> (Thumb, 8 bytes, Stack size 0 bytes, bsp_uart.o(i.UART_SendArray))
@@ -2481,7 +2480,7 @@ Global Symbols
 <LI><a href="#[12e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;SystemClock_Config
 <LI><a href="#[88]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Run
 <LI><a href="#[71]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;APP_Init
-<LI><a href="#[132]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Init
+<LI><a href="#[133]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Init
 </UL>
 <BR>[Address Reference Count : 1]<UL><LI> entry9a.o(.ARM.Collect$$$$0000000B)
 </UL><P>
@@ -2531,17 +2530,21 @@ Local Symbols
 <LI><a href="#[5c]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_GetADC
 </UL>
 
-<P><STRONG><a name="[134]"></a>U4_ParseReport</STRONG> (Thumb, 92 bytes, Stack size 0 bytes, protocol_u4.o(i.U4_ParseReport))
-<BR><BR>[Called By]<UL><LI><a href="#[8d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Run
-<LI><a href="#[133]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
+<P><STRONG><a name="[132]"></a>U4_ParseReport</STRONG> (Thumb, 108 bytes, Stack size 8 bytes, protocol_u4.o(i.U4_ParseReport))
+<BR><BR>[Stack]<UL><LI>Max Depth = 8<LI>Call Chain = U4_ParseReport
+</UL>
+<BR>[Calls]<UL><LI><a href="#[5a]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;__aeabi_memcpy
+</UL>
+<BR>[Called By]<UL><LI><a href="#[8d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Run
+<LI><a href="#[134]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ScanReport
 </UL>
 
-<P><STRONG><a name="[133]"></a>U4_ScanReport</STRONG> (Thumb, 302 bytes, Stack size 296 bytes, protocol_u4.o(i.U4_ScanReport))
+<P><STRONG><a name="[134]"></a>U4_ScanReport</STRONG> (Thumb, 302 bytes, Stack size 296 bytes, protocol_u4.o(i.U4_ScanReport))
 <BR><BR>[Stack]<UL><LI>Max Depth = 344<LI>Call Chain = U4_ScanReport &rArr; Frame_Parse_1B_LE &rArr; Frame_CRC16
 </UL>
 <BR>[Calls]<UL><LI><a href="#[135]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;UART_ReadByte
 <LI><a href="#[bb]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;Frame_Parse_1B_LE
-<LI><a href="#[134]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ParseReport
+<LI><a href="#[132]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_ParseReport
 </UL>
 <BR>[Called By]<UL><LI><a href="#[8d]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_Proto_Run
 </UL>
@@ -2578,7 +2581,7 @@ Local Symbols
 <LI><a href="#[9b]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U4_AmsZero
 </UL>
 
-<P><STRONG><a name="[61]"></a>APP_Dispatch</STRONG> (Thumb, 1122 bytes, Stack size 80 bytes, app.o(i.APP_Dispatch))
+<P><STRONG><a name="[61]"></a>APP_Dispatch</STRONG> (Thumb, 1182 bytes, Stack size 80 bytes, app.o(i.APP_Dispatch))
 <BR><BR>[Stack]<UL><LI>Max Depth = 504<LI>Call Chain = APP_Dispatch &rArr; FwUpload_Handle &rArr; APP_SendAck &rArr; CDC_Transmit_FS &rArr; USBD_CDC_TransmitPacket &rArr; USBD_LL_Transmit &rArr; HAL_PCD_EP_Transmit &rArr; USB_EPStartXfer &rArr; USB_WritePMA
 </UL>
 <BR>[Calls]<UL><LI><a href="#[6e]">&gt;&gt;</a>&nbsp;&nbsp;&nbsp;U7_Proto_Run

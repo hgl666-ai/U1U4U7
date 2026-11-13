@@ -42,7 +42,12 @@ typedef enum {
 #define MGR_CMD_SN_UPLOAD       0x0024   /* U4 SN 码上传 (治具自发, 16B) */
 #define MGR_CMD_MOTOR_FWD       0x0025   /* [2026-11-13] 电机前进固定步数 (不回零, 点动用) */
 #define MGR_CMD_MOTOR_BACK      0x0026   /* [2026-11-13] 电机后退固定步数 (不回零, 点动用) */
-#define MOTOR_JOG_STEPS          1600U   /* 点动步数: 0.5mm (1600/3200 步每mm) */
+#define MGR_CMD_QUERY_U4_RAW    0x0027   /* [2026-11-13] 调试: 读最后一帧 U4 0x30 原始 24B 载荷
+                                          * ACK: LEN=00 19, DATA=[1B status][24B 原样载荷] */
+#define MOTOR_JOG_STEPS           800U   /* 点动步数 = 0.5mm (800步 ÷ 1600步/mm)
+                                          * [2026-11-13 ★重新标定] 原 1600 步按 3200步/mm 算,
+                                          * 实测实际标定是 1600步/mm(见 ADC_CALIB_SWEEP_STEPS 注释),
+                                          * 所以 1600 步实际走了 1mm, 不是 0.5mm → 改为 800。 */
 #define MGR_CMD_U4_SET_PERIOD   0x002B   /* U4 设置报文周期 (转发 0x18, LEN=2 [period_ms 2B 大端]) */
 
 /*===== 治具测试 命令码 (0x011x, 避开经理协议) =====*/
@@ -128,14 +133,13 @@ typedef enum {
                                                 *        顶住后挡块 → 每轮结束自动复位零点,
                                                 *        下一轮起点仍是零点, 不会累积漂移。 */
 #define ADC_CALIB_SWEEP_UM              3000U  /* 3mm 去程 (um) */
-#define ADC_CALIB_SWEEP_STEPS           9600U  /* [2026-11-13] 3000um × 3200步/圈 ÷ 1000um导程 = 9600
-                                                * (旧旋转机构 15500um/圈 时为 619) */
-#define ADC_CALIB_RETURN_STEPS         10240U  /* [2026-11-13] 回程 3.2mm (4.0→3.5→3.2mm):
-                                                * 比去程(3mm)多走 0.2mm, 顶住后挡块自校正零点,
-                                                * 压入深度仅 0.2mm, 对机构最温和。
-                                                * ★代价: 0.2mm 的复位余量偏小, 若连续多轮后
-                                                * 观察到"位置逐轮前移"(复位不完全), 改回 3.5mm(11200)。
-                                                * 3200步/mm × 3.2 = 10240 */
+#define ADC_CALIB_SWEEP_STEPS           4800U  /* [2026-11-13 ★重新标定] 3000um × 1600步/mm = 4800
+                                                * 实测标定: 5次点动(8000步)走完 4.2mm 全程 → 1905 步/mm;
+                                                * 稳定段 1600步走 1033um → 1549 步/mm。取 1600 步/mm。
+                                                * ★原按 3200步/mm 算的 9600 步, 实际会走 6mm,
+                                                *   直接冲出 4.2mm 的机构行程 → 撞限位! */
+#define ADC_CALIB_RETURN_STEPS          5120U  /* [2026-11-13 ★重新标定] 回程 3.2mm × 1600步/mm = 5120
+                                                * (比去程 3mm 多 0.2mm, 顶住后挡块自校正零点) */
 #define ADC_CALIB_MOTOR_DELAY_MS          500U  /* 电机物理到位等待 (每次移动后) */
 #define ADC_CALIB_READ_DELAY_MS           200U  /* 完成校准后读极值前延迟 */
 /* 阈值判定 (逐通道, 任一条件成立即该通道失败)

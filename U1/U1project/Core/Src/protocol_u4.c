@@ -13,6 +13,10 @@ static uint16_t u4_seq = 0x0001;
 U4_ReportData u4_report;
 uint8_t       u4_report_fresh = 0;
 
+/* [2026-11-13] 调试: 保留最后一帧 0x30 的原始 24 字节载荷 (供 CMD 0x0027 回传) */
+uint8_t       u4_raw_report[U4_REPORT_LEN];
+uint8_t       u4_raw_valid = 0;
+
 /* ISP 烧录期间暂停扫描: U4_ScanReport 会吃掉 ISP 的 0x79 响应 */
 uint8_t u4_scan_pause = 0;
 
@@ -41,6 +45,9 @@ static void U4_ParseReport(uint8_t *data, uint16_t len)
                            | ((uint32_t)data[20] << 8)
                            |  (uint32_t)data[21]);
     u4_report.ams_adc    = ((uint16_t)data[22] << 8) | data[23];
+    /* [2026-11-13] 调试: 原样保留 24 字节载荷 (CMD 0x0027 回传用) */
+    memcpy(u4_raw_report, data, U4_REPORT_LEN);
+    u4_raw_valid    = 1;
     u4_report_fresh = 1;
 }
 

@@ -504,6 +504,21 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         break;
     }
 
+    /* [2026-11-13] 调试: 读最后一帧 U4 0x30 原始报文
+     * PC → U1: LEN=0
+     * U1 → PC: LEN=25, DATA=[1B status][24B 原样载荷(大端)]
+     *   status 0x00 = 已收到过报文 (数据有效)
+     *          0x0C = 尚未收到过任何报文 (24B 全 0)
+     * 用途: ④ 测径定位 —— 直接看 position / angle_acc / raw_length / length
+     *       在电机不同位置时的真实取值, 判断"读数到底由哪个量决定"。 */
+    case MGR_CMD_QUERY_U4_RAW: {
+        uint8_t raw[1 + U4_REPORT_LEN];
+        raw[0] = u4_raw_valid ? APP_STATUS_OK : APP_STATUS_ERR_TIMEOUT;
+        for (uint8_t i = 0; i < U4_REPORT_LEN; i++) raw[1 + i] = u4_raw_report[i];
+        APP_SendAck(MGR_CMD_QUERY_U4_RAW, raw, (uint16_t)(1 + U4_REPORT_LEN));
+        break;
+    }
+
     /* U4 设置报文周期 (U1 转发 0x18 到 U4)
      * PC → U1: LEN=2, DATA=[period_ms 2B 大端]; 实际生效以 U4 报文间隔为准 */
     case MGR_CMD_U4_SET_PERIOD: {
