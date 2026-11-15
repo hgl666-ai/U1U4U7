@@ -12,6 +12,7 @@ static uint16_t u4_seq = 0x0001;
 /*===== 报文 =====*/
 U4_ReportData u4_report;
 uint8_t       u4_report_fresh = 0;
+uint32_t      u4_last_rep_tick = 0;   /* [2026-11-15] 最后一帧 0x30 到达时刻 */
 
 /* [2026-11-13] 调试: 保留最后一帧 0x30 的原始 24 字节载荷 (供 CMD 0x0027 回传) */
 uint8_t       u4_raw_report[U4_REPORT_LEN];
@@ -49,6 +50,19 @@ static void U4_ParseReport(uint8_t *data, uint16_t len)
     memcpy(u4_raw_report, data, U4_REPORT_LEN);
     u4_raw_valid    = 1;
     u4_report_fresh = 1;
+    /* [2026-11-15] 记录到达时刻, 供 U4_ReportIsRecent() 判断数据是否过期 */
+    u4_last_rep_tick = HAL_GetTick();
+}
+
+/**
+  * @brief  [2026-11-15] 判断 U4 报文是否还新鲜 (用于区分"真在测"和"RAM 旧值")
+  * @param  max_age_ms: 允许的最大年龄 (ms); 建议 ≥ 报文周期的 4~8 倍
+  * @retval 1=新鲜 (可当有效测量值), 0=已过期/从未收到
+  */
+uint8_t U4_ReportIsRecent(uint32_t max_age_ms)
+{
+    if (!u4_raw_valid) return 0;                              /* 一帧都没收到过 */
+    return ((uint32_t)(HAL_GetTick() - u4_last_rep_tick) <= max_age_ms) ? 1U : 0U;
 }
 
 /*===== Session 状态机 =====*/

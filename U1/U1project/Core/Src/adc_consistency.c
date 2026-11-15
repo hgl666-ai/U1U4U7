@@ -78,9 +78,20 @@ uint8_t ADC_Consistency_Start(uint8_t threshold)
         }
     }
     /* [2026-08-14] U4 数据改从报文流取 (U4 固件未实现 0x34):
-     *   CH1=vo1, CH2=vo2, CH3=ams_adc; CH4 不在报文流, status=0 待治具完成 */
+     *   CH1=vo1, CH2=vo2, CH3=ams_adc; CH4 不在报文流, status=0 待治具完成
+     * ★★[2026-11-15] 增加"新鲜度"判定 ★★
+     *   原来无条件把 U4 三路标成 status=1。但 u4_report 只是 RAM 快照 —— U4 下电后
+     *   不再有新帧, 旧值一直留在里面, 于是界面上 DUT 那几路"数值保持不变", 看起来
+     *   像还在测。现改为: 只有最近 ADC_CONSIST_U4_FRESH_MS 内收到过 0x30 报文,
+     *   才认为 U4 的读数有效; 否则清 0 并标 status=0 (比对时会跳过它,
+     *   仍可用 U1+U7 两路做一致性判定)。
+     * ★这也让"U4 掉线"在结果里能看出来, 而不是被旧数据掩盖。 */
     memset(adc_consist_buf[1], 0, 16);
-    {
+    adc_consist_buf[1][0]  = 1;   /* 通道号先填好, 数据区留 0 */
+    adc_consist_buf[1][4]  = 2;
+    adc_consist_buf[1][8]  = 3;
+    adc_consist_buf[1][12] = 4;
+    if (U4_ReportIsRecent(ADC_CONSIST_U4_FRESH_MS)) {
         const uint16_t vals[3] = { u4_report.vo1, u4_report.vo2, u4_report.ams_adc };
         for (uint8_t i = 0; i < 3; i++) {
             uint16_t v = vals[i];
@@ -92,12 +103,10 @@ uint8_t ADC_Consistency_Start(uint8_t threshold)
                 v = (uint16_t)((uint32_t)v
                                * ADC_CONSIST_U4_AMS_NUM / ADC_CONSIST_U4_AMS_DEN);
             }
-            adc_consist_buf[1][i * 4 + 0] = (uint8_t)(i + 1);
             adc_consist_buf[1][i * 4 + 1] = (uint8_t)(v >> 8);
             adc_consist_buf[1][i * 4 + 2] = (uint8_t)(v);
-            adc_consist_buf[1][i * 4 + 3] = 1;
+            adc_consist_buf[1][i * 4 + 3] = 1;      /* 有效性: 有新鲜报文才置 1 */
         }
-        adc_consist_buf[1][3 * 4 + 0] = 4;   /* CH4 不在报文流 */
     }
     memset(adc_consist_buf[2], 0, 16);
 

@@ -53,6 +53,16 @@ typedef struct {
 extern U4_ReportData u4_report;
 extern uint8_t       u4_report_fresh;  /* 1=有新报文待读, 上层读后清零 */
 
+/* [2026-11-15] "报文是否还新鲜"判定 —— 解决"U4 下电后读数被当成有效测量值"。
+ * ★背景: u4_report 只是一份 RAM 快照, U4 掉电后不再有新帧, 旧值会一直留在里面。
+ *   ADC 一致性校验原来直接拿它当 U4 的测量结果并标 status=1, 于是 U4 下电后
+ *   界面上 DUT 那几路数值"保持不变" —— 那是旧数据, 不是真在测。
+ * ★u4_last_rep_tick 在每次解析 0x30 报文时刷新, 用它算"距上一帧多久"。
+ * ★用法: U4_ReportIsRecent(年龄上限ms), 1=还新鲜, 0=已过期(应按无效处理)。
+ * ★注意: 年龄上限要大于报文周期的数倍。默认周期 50ms, 取 400ms = 8 个周期没来。 */
+extern uint32_t      u4_last_rep_tick;
+uint8_t U4_ReportIsRecent(uint32_t max_age_ms);
+
 /* [2026-11-13] 调试用: 最后一帧 0x30 的**原始 24 字节载荷**(未经解析, 大端原样),
  * 配合 CMD=0x0027 回传给 PC, 用于现场确认 position / angle_acc / raw_length
  * 等字段的真实变化 (④ 测径判据定位用)。 */
