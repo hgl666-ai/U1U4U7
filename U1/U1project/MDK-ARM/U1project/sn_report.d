@@ -34,6 +34,7 @@ u1project\sn_report.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd.h
 u1project\sn_report.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_ll_usb.h
 u1project\sn_report.o: ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pcd_ex.h
 u1project\sn_report.o: ../Core/Inc/app.h
+u1project\sn_report.o: ../Core/Inc/bsp_adc.h
 u1project\sn_report.o: ../Core/Inc/isp_programmer.h
 u1project\sn_report.o: ../Core/Inc/bsp_uart.h
 u1project\sn_report.o: ../Core/Inc/protocol_frame.h

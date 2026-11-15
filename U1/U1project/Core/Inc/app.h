@@ -181,4 +181,10 @@ void APP_Init(void);
 void APP_Run(void);
 void APP_USB_Receive(uint8_t *data, uint32_t len);
 
+/* [2026-11-15] SN 读取 (0x0029 查询 与 插入自动检测 共用)
+ *   APP_SnReadUid: 进 bootloader 读 96-bit UID 再复位回应用; 0=成功
+ *   APP_IsIdle    : 1=系统空闲, 可以安全复位 U4 (测试/烧录中不行) */
+uint8_t APP_SnReadUid(uint8_t *uid);
+uint8_t APP_IsIdle(void);
+
 #endif

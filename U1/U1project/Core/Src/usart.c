@@ -159,7 +159,14 @@ void HAL_UART_MspInit(UART_HandleTypeDef* uartHandle)
 
     GPIO_InitStruct.Pin = GPIO_PIN_3;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    /* ★[2026-11-15] NOPULL → PULLUP。
+     * 目的: 把 USART2_RX(PA3) 当作"U4 是否上电"的检测脚。
+     *   U4 上电 → 它的 TX 空闲为高 → PA3 读高
+     *   U4 下电 → TX 失去驱动, 内部 ESD 二极管被钳到 U4 的 VDD(0V)
+     *            → 我们的上拉被拉低 → PA3 读低
+     * 开上拉对串口接收无副作用(UART 空闲本就应为高, 上拉是标准做法);
+     * NOPULL 时引脚悬空, 电平不确定, 无法用于检测。 */
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
     /* USART2 DMA Init */

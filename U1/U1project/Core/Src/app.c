@@ -430,6 +430,48 @@ static void APP_TestStep(void)
     }
 }
 
+/*===== [2026-11-15] SN 读取 (供 0x0029 查询 和 插入自动检测 共用) =====
+ *
+ * 把"进 bootloader → 读 UID → 复位回应用"整段抽出来, 两处共用, 省 Flash。
+ *   ① 暂停 U4 报文扫描 (避免吃掉 ISP 的 0x79 响应)
+ *   ② 切 8E1 (bootloader 模式)
+ *   ③ ISP_Connect: BOOT0 高 + 复位 + 0x7F 同步
+ *   ④ ISP 0x11 读 0x1FFF7590 的 12 字节 UID
+ *   ⑤ 恢复: 先切回 8N1, 再 BOOT0 低 + 复位, 最后恢复扫描
+ *
+ * ★第 ⑤ 步必须"先切 8N1 再复位": 否则有固件的板子复位后应用立刻在 8N1 发报文,
+ *   而 U1 还是 8E1 → 帧错误 → U1 的 USART2 RX DMA 可能永久失效。
+ * ★返回值: 0 = 成功 (uid 已填好), 非 0 = 失败。
+ */
+uint8_t APP_SnReadUid(uint8_t *uid)
+{
+    uint8_t err = 1;
+
+    U4_ScanPause(1);
+    U4_UART_SetMode(0);
+    if (ISP_Connect() == ISP_OK &&
+        ISP_ReadMemory(SN_UID_BASE, uid, SN_UID_LEN) == ISP_OK) {
+        err = 0;
+    }
+    /* 恢复: 先切回 8N1, 再复位, 最后恢复扫描 */
+    U4_UART_SetMode(1);
+    HAL_Delay(5);
+    U4_BOOT0_LOW();
+    U4_RESET_LOW();
+    HAL_Delay(10);
+    U4_RESET_HIGH();
+    HAL_Delay(50);            /* 等应用启动 (空板则留在 bootloader) */
+    U4_ScanPause(0);
+
+    return err;
+}
+
+/* [2026-11-15] 供 SN_AutoPoll 判断"现在能不能安全地复位 U4 去读 SN" */
+uint8_t APP_IsIdle(void)
+{
+    return (app_state == APP_STATE_IDLE) ? 1U : 0U;
+}
+
 /*===== 帧命令分发 =====*/
 
 static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
@@ -578,11 +620,7 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
     }
 
     /* [2026-11-14] 读 U4 的 SN (芯片 96-bit UID), 供上位机在烧录前先取 SN。
-     * 流程: 暂停报文扫描 → 切 8E1 → ISP_Connect(BOOT0高+复位+0x7F)
-     *       → ISP 0x11 读 0x1FFF7590 的 12 字节 → 复位回应用 → 切回 8N1。
-     * ★为什么不用复位也能读: 空板本就停在 bootloader, 直接 0x7F 即可同步;
-     *   但已烧录的板子在跑应用, 必须复位才能进 bootloader, 所以统一走 ISP_Connect。
-     * ★读 UID 用的是系统存储区地址, 与 flash 内容无关 —— 空板/满板都能读。
+     * ★[2026-11-15] 读取动作已抽成 APP_SnReadUid(), 供"插入自动检测(SN_AutoPoll)"共用。
      * ★返回 17 字节: [status][01][UID 12B][XOR][00][00]。 */
     case MGR_CMD_READ_SN: {
         uint8_t sn[17];
@@ -592,30 +630,13 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         for (i = 0; i < 17U; i++) sn[i] = 0;
         sn[0] = APP_STATUS_ERR_TIMEOUT;
 
-        U4_ScanPause(1);          /* 暂停报文扫描, 避免吃掉 ISP 的 0x79 响应 */
-        U4_UART_SetMode(0);       /* bootloader 用 8E1 */
-        if (ISP_Connect() == ISP_OK &&
-            ISP_ReadMemory(SN_UID_BASE, uid, SN_UID_LEN) == ISP_OK) {
+        if (APP_SnReadUid(uid) == 0) {          /* 0 = 读成功 */
             for (i = 0; i < SN_UID_LEN; i++) xor_c ^= uid[i];
             sn[0] = APP_STATUS_OK;
             sn[1] = 0x01;                       /* SN 算法版本 */
             for (i = 0; i < SN_UID_LEN; i++) sn[2 + i] = uid[i];
             sn[14] = xor_c;                     /* UID 异或校验 */
         }
-        /* 恢复: 先切回 8N1, 再 BOOT0 低 + 复位, 最后恢复扫描。
-         * ★[2026-11-14] 顺序修正: 原先是"先复位、后切 8N1"——
-         *   若板子里有应用, 复位后应用立刻在 8N1 上发 0x30 报文, 而 U1 此刻还是
-         *   8E1 → 帧错误(FE/PE/ORE) → U1 的 USART2 RX DMA 可能永久失效,
-         *   后续所有 U4 通信都收不到。空板(无应用)碰不到, 但有固件的板子会碰到。
-         * 另加 50ms 等待让 U4 应用启动完成再恢复扫描。 */
-        U4_UART_SetMode(1);       /* ① 先切回 8N1 */
-        HAL_Delay(5);
-        U4_BOOT0_LOW();           /* ② BOOT0 拉低, 复位后从 flash 启动应用 */
-        U4_RESET_LOW();
-        HAL_Delay(10);
-        U4_RESET_HIGH();
-        HAL_Delay(50);            /* ③ 等应用启动 (空板则留在 bootloader) */
-        U4_ScanPause(0);          /* ④ 恢复报文扫描 */
 
         APP_SendAck(MGR_CMD_READ_SN, sn, 17);
         break;
@@ -953,6 +974,9 @@ void APP_Run(void)
     }
 
     APP_RGB_Update();
+
+    /* [2026-11-15] 检测 U4 插入 → 自动读 UID 并上传 SN (只在空闲时动手) */
+    SN_AutoPoll();
 
     /* 诊断: 每3秒自动U7 PING (校准/回零/deferred 进行时跳过, 避免与电机控制冲突) */
     if (!ADC_Calib_IsBusy() && !DiamCalib_IsBusy() && !MotorSeq_IsBusy() && deferred_cmd == 0) {
