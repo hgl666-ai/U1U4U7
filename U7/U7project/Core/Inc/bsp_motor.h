@@ -12,17 +12,26 @@
 
 /* 速度预设 */
 #define MOTOR_SPEED_FAST  10000   /* 10kHz 高速 */
-#define MOTOR_SPEED_SLOW   2000   /*  2kHz 低速 */
+#define MOTOR_SPEED_SLOW   1000   /* [2026-11-15] 2000→1000 (方案C): 本项目电机移动幅度很小
+                                   * (0.5~3mm), 时间不是约束, 以"绝不丢步"为第一优先。
+                                   * 1000Hz ÷ 1600步/圈 = 0.625 圈/秒 = 37.5 rpm ——
+                                   * 远低于小步进电机的牵入频率, 可原地启动/停止不用斜坡。 */
 
-/*===== 梯形加减速参数 [2026-08-19] =====
- * 丢步修复: 直接以目标频率硬启动/硬停 → 平滑起步/减速到位
- * 全程在 ARR 域线性 (f = 32MHz/(ARR+1)), 加减速即 ARR 均匀增减, ISR 内无除法 */
-#define MOTOR_F_START_HZ    500U    /* 起步频率: PSC=0 时 16 位 ARR 下限 ≈488Hz, 取 500Hz */
-#define MOTOR_FREQ_MAX_HZ  10000U   /* 运行频率上限 (覆盖 SLOW=2000 / FAST=10000) */
-#define MOTOR_ACCEL_STEPS   800U    /* 加速段步数 (2000Hz 时 ≈1.9Hz/步) */
+/*===== 梯形加减速 [2026-08-19, 2026-11-15 已关闭] =====
+ * ★[2026-11-15] ★MOTOR_RAMP_ENABLE = 0★: 全程匀速, 不做加减速。
+ *   原因: 本项目行程极短(0.5~3mm), 原斜坡在 steps<1600 时会退化成"三角形"
+ *   (加速到一半就减速, 实际最高只到 ~1250Hz), 既跑不满目标速度又让时间不可预测;
+ *   而降到 1000Hz 后本就在牵入频率以内, 不需要斜坡。
+ *   斜坡代码全部保留, 将来要恢复把本宏改回 1 即可。
+ *   恢复后注意: steps<1600 仍会走三角形轮廓。 */
+#define MOTOR_RAMP_ENABLE     0     /* 0=匀速(推荐, 当前); 1=启用梯形加减速 */
+
+#define MOTOR_F_START_HZ    500U    /* 起步频率 (仅斜坡启用时有效) */
+#define MOTOR_FREQ_MAX_HZ  10000U   /* 运行频率上限 */
+#define MOTOR_ACCEL_STEPS   800U    /* 加速段步数 (仅斜坡启用时有效) */
 #define MOTOR_DECEL_STEPS   800U    /* 减速段步数 */
-#define MOTOR_RAMP_GRAN       2U    /* 每 N 步调一档 ARR (2: ISR 开销减半; 1: 最平滑) */
-#define MOTOR_MIN_RAMP_STEPS  4U    /* 小于此步数不做加减速, 全程起步低速直跑 */
+#define MOTOR_RAMP_GRAN       2U    /* 每 N 步调一档 ARR */
+#define MOTOR_MIN_RAMP_STEPS  4U    /* 小于此步数不做加减速 */
 
 /* 微步 1/16 (200×16=3200 脉冲/圈)，初始化时由 BSP_TMC_SetMicrostep16() 显式配置，
  * 与 U1 侧 diam_calib.h 的 DIAM_CALIB_STEPS_PER_REV=3200 一致 */
@@ -94,8 +103,20 @@
 #define MOTOR_HOME_PRESS_IRUN    8U           /* 轻压电流 ≈0.28A (0.6A 额定 46%), 顶住力 ≈27N */
 #define MOTOR_HOME_PRESS_IHOLD   4U           /* 轻压保持电流 ≈0.14A */
 
+/*===== [2026-11-14] 空闲自动脱机 (解决"用久了很烫") =====
+ * 现象: 电流已经降到 0.275A (irun=8), 但电机用久了仍然烫。
+ * 原因: 动作结束后驱动器不脱机, TMC 以 IHOLD(≈0.14A) 持续通电保持力矩,
+ *       20mm 小电机散热面积小, 长时间累积就烫手 (步进电机本身允许 80°C, 但手感很差)。
+ * 做法: 空闲超过 MOTOR_IDLE_OFF_MS 后拉高 EN 脱机 → **电流归零、完全不发热**。
+ *       下一次 BSP_Motor_Move 会重新 BSP_EN2_Set(0) 使能, 所以不影响动作。
+ * ★前提: 机构必须自锁 (丝杆通常自锁)。若脱机后物件会自己滑动/掉落,
+ *   把 MOTOR_IDLE_OFF_MS 设为 0 关闭本功能。
+ * ★副作用: 脱机后没有保持力矩, 位置靠丝杆自锁维持; 每次动作仍会在行程内重新定位。 */
+#define MOTOR_IDLE_OFF_MS        3000U        /* 空闲 3 秒后脱机; 0 = 关闭此功能 */
+
 void     BSP_Motor_Init(void);
 uint8_t  BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz);  /* 1=已启动 0=拒绝(busy/参数) */
+void     BSP_Motor_IdleTick(void);    /* [2026-11-14] 主循环调用: 空闲超时自动脱机(降温) */
 void     BSP_Motor_Stop(void);
 uint8_t  BSP_Motor_IsBusy(void);
 uint32_t BSP_Motor_GetDone(void);

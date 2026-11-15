@@ -48,11 +48,18 @@ ISP_Result_t ISP_Connect(void) {
     (void)huart2.Instance->DR;   /* 清 RXNE */
 
     // 物理时序控制
+    /* ★★ [2026-11-15] PB15 已改为【开漏】输出, 时序必须相应放宽 ★★
+     * 开漏的 RESET_HIGH 只是"放手(高阻)", NRST 靠 U4 侧的上拉回高,
+     * 上升沿由 RC 决定(内部约 40k 上拉 × 板上对地电容), 可能几十毫秒。
+     * 原来"释放后只等 50ms 就发 0x7F"会导致芯片还在复位里 → 同步失败 → 烧录直接退出。
+     * 现按 M1 治具(UART_FLASH.c)的经验放大:
+     *   BOOT0 建立 100ms → 复位低 20ms → 释放后等 300ms 再同步。 */
     U4_BOOT0_HIGH();
+    HAL_Delay(100);          /* BOOT0 建立时间 (参考 M1 治具 UF_BOOT_SETUP_MS) */
     U4_RESET_LOW();
-    HAL_Delay(10);
-    U4_RESET_HIGH();
-    HAL_Delay(50);
+    HAL_Delay(20);           /* 复位低脉宽 (参考 M1 治具 UF_RESET_HOLD_MS) */
+    U4_RESET_HIGH();         /* 开漏: 释放, 由上拉把 NRST 拉回高 */
+    HAL_Delay(300);          /* ★等 NRST 真正升到复位释放电平, 再发同步字节 */
 
     UART_SendByte(&huart2, ISP_CMD_SYNC);
     return ISP_WaitForACK(100);

@@ -188,6 +188,9 @@ int main(void)
   PROTO_Init();
   while (1) {
     PROTO_Run();
+    /* [2026-11-14] 空闲超时自动脱机 → 电流归零, 解决"电机用久了很烫"
+     * (动作结束后 TMC 一直以 IHOLD≈0.14A 通电保持, 小电机累积发热) */
+    BSP_Motor_IdleTick();
   }
   /* USER CODE END 2 */
   /* USER CODE END 3 */

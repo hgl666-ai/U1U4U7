@@ -294,15 +294,19 @@ static void APP_ProgramStep(void)
          *   之间加 10k 上拉电阻 (或减小 PB15→NRST 串阻 / 去掉对地下拉)。
          *   软件侧保留两个不受影响的功能: 烧录成功判定只看 ISP 结果, 不受此影响;
          *   调试命令 0x0028 仍可用来手动复位抢状态。 */
-        ISP_Go(0x08000000);   /* 先试 Go 直接跳转 */
+        //ISP_Go(0x08000000);   /* 先试 Go 直接跳转 */
         /* [2026-08-11] ISP_Go 在 G0 可能不可靠; 且 BOOT0(PA8) 全程保持高电平,
          * 须拉低 BOOT0 + 复位, 让 U4 从 flash 正常启动应用 */
-        U4_BOOT0_LOW();
-        U4_RESET_LOW();
-        HAL_Delay(10);
-        U4_RESET_HIGH();
-        /* [2026-08-12] 切回 8N1 (App 运行时用 8N1, 与 ISP 的 8E1 区分) */
+                /* [2026-08-12] 切回 8N1 (App 运行时用 8N1, 与 ISP 的 8E1 区分) */
         U4_UART_SetMode(1);
+        HAL_Delay(100);
+        U4_BOOT0_LOW();
+        HAL_Delay(100);
+        U4_RESET_LOW();
+        HAL_Delay(100);
+        U4_RESET_HIGH();
+        HAL_Delay(100);
+        
         U4_ScanPause(0);   /* ISP 结束, 恢复 U4 报文扫描 */
         { uint8_t ok = APP_STATUS_OK; APP_SendAck(APP_CMD_PROGRAM, &ok, 1); }
         app_state = APP_STATE_IDLE; prog_step = -1; APP_SetRGB(RGB_GREEN, 0); return;
@@ -598,13 +602,20 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
             for (i = 0; i < SN_UID_LEN; i++) sn[2 + i] = uid[i];
             sn[14] = xor_c;                     /* UID 异或校验 */
         }
-        /* 恢复: BOOT0 拉低 + 复位回应用 + 切回 8N1 + 恢复扫描 */
-        U4_BOOT0_LOW();
+        /* 恢复: 先切回 8N1, 再 BOOT0 低 + 复位, 最后恢复扫描。
+         * ★[2026-11-14] 顺序修正: 原先是"先复位、后切 8N1"——
+         *   若板子里有应用, 复位后应用立刻在 8N1 上发 0x30 报文, 而 U1 此刻还是
+         *   8E1 → 帧错误(FE/PE/ORE) → U1 的 USART2 RX DMA 可能永久失效,
+         *   后续所有 U4 通信都收不到。空板(无应用)碰不到, 但有固件的板子会碰到。
+         * 另加 50ms 等待让 U4 应用启动完成再恢复扫描。 */
+        U4_UART_SetMode(1);       /* ① 先切回 8N1 */
+        HAL_Delay(5);
+        U4_BOOT0_LOW();           /* ② BOOT0 拉低, 复位后从 flash 启动应用 */
         U4_RESET_LOW();
         HAL_Delay(10);
         U4_RESET_HIGH();
-        U4_UART_SetMode(1);
-        U4_ScanPause(0);
+        HAL_Delay(50);            /* ③ 等应用启动 (空板则留在 bootloader) */
+        U4_ScanPause(0);          /* ④ 恢复报文扫描 */
 
         APP_SendAck(MGR_CMD_READ_SN, sn, 17);
         break;

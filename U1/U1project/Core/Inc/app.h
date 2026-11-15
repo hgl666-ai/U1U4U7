@@ -148,14 +148,13 @@ typedef enum {
                                                 * 自校正: 回程比去程多走 1mm(4mm vs 3mm), 故意
                                                 *        顶住后挡块 → 每轮结束自动复位零点,
                                                 *        下一轮起点仍是零点, 不会累积漂移。 */
-#define ADC_CALIB_SWEEP_UM              3000U  /* 3mm 去程 (um) */
-#define ADC_CALIB_SWEEP_STEPS           4800U  /* [2026-11-13 ★重新标定] 3000um × 1600步/mm = 4800
-                                                * 实测标定: 5次点动(8000步)走完 4.2mm 全程 → 1905 步/mm;
-                                                * 稳定段 1600步走 1033um → 1549 步/mm。取 1600 步/mm。
-                                                * ★原按 3200步/mm 算的 9600 步, 实际会走 6mm,
-                                                *   直接冲出 4.2mm 的机构行程 → 撞限位! */
-#define ADC_CALIB_RETURN_STEPS          5120U  /* [2026-11-13 ★重新标定] 回程 3.2mm × 1600步/mm = 5120
-                                                * (比去程 3mm 多 0.2mm, 顶住后挡块自校正零点) */
+#define ADC_CALIB_SWEEP_UM              2000U  /* [2026-11-14 用户指定] 去程 2mm (原 3000U=3mm) */
+#define ADC_CALIB_SWEEP_STEPS           3200U  /* 2000um × 1600步/mm = 3200
+                                                * (标定依据: 5次点动/8000步走完4.2mm → 取 1600 步/mm) */
+#define ADC_CALIB_RETURN_STEPS          3200U  /* [2026-11-14 用户指定] 回程同样 2mm
+                                                * ★与去程等长 → 不再"多压 0.2mm", 因此**失去自校正**:
+                                                *   每轮结束位置 = 起点 ± 丢步量, 长期可能缓慢漂移。
+                                                *   若观察到逐轮前移, 把本值改回 3520 (2.2mm) 恢复顶压复位。 */
 #define ADC_CALIB_MOTOR_DELAY_MS          500U  /* 电机物理到位等待 (每次移动后) */
 #define ADC_CALIB_READ_DELAY_MS           200U  /* 完成校准后读极值前延迟 */
 /* 阈值判定 (逐通道, 任一条件成立即该通道失败)

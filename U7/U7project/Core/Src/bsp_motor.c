@@ -123,8 +123,17 @@ uint8_t BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
     }
 
     delta = (arr_start > apex) ? (arr_start - apex) : 0U;
+#if MOTOR_RAMP_ENABLE
     armed = (steps >= MOTOR_MIN_RAMP_STEPS) && (delta >= 2U);
     if (!armed) { apex = arr_start; delta = 0U; }        /* 微小步数 → 全程起步低速, 防除零 */
+#else
+    /* [2026-11-15] 斜坡关闭: 全程匀速跑 arr_target, 不做加减速。
+     * ★注意不能只把 armed 置 0 —— 原代码在 !armed 时会把 ramp_arr 设成 arr_start
+     *   (500Hz), 那样会变成"全程 500Hz 龟速"。这里显式把顶点设为目标频率。 */
+    armed = 0;
+    apex  = arr_target;
+    delta = 0U;
+#endif
 
     a_t = accel_steps / MOTOR_RAMP_GRAN; if (a_t == 0U) a_t = 1U;
     d_t = decel_steps / MOTOR_RAMP_GRAN; if (d_t == 0U) d_t = 1U;
@@ -140,7 +149,9 @@ uint8_t BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
     ramp_armed       = armed;
     ramp_state       = (armed && accel_steps > 0U) ? RAMP_ACCEL : RAMP_CRUISE;
     ramp_tier_cnt    = 0;
-    ramp_arr         = (uint16_t)arr_start;
+    /* [2026-11-15] 斜坡关闭时必须从 arr_target(目标频率) 起跑;
+     * 斜坡启用时仍从 arr_start(500Hz) 起跑再加速。 */
+    ramp_arr         = armed ? (uint16_t)arr_start : (uint16_t)arr_target;
 
     motor_target = steps;
     motor_count  = 0;
@@ -152,13 +163,19 @@ uint8_t BSP_Motor_Move(uint8_t dir, uint32_t steps, uint32_t freq_hz)
 
     /*── 安全启动序列: 清 UIF/NVIC 防虚计一步; busy 最后置位 (ARPE=0, 写后立即生效) ──*/
     TIM3->CNT  = 0;                                    /* 复位计数, 首周期 = ARR+1 */
-    TIM3->ARR  = ramp_arr_start;                       /* 起步低速, 立即生效 */
-    TIM3->CCR2 = (uint16_t)(ramp_arr_start >> 1);      /* 50% 占空比 */
+    /* [2026-11-15] 斜坡关闭时首周期就用目标频率(arr_target), 否则会以 500Hz 起跑且永不加速 */
+    TIM3->ARR  = armed ? ramp_arr_start : (uint16_t)arr_target;
+    TIM3->CCR2 = (uint16_t)(TIM3->ARR >> 1);           /* 50% 占空比 */
     TIM3->EGR  = TIM_EGR_UG;                           /* 更新事件: 同步计数 + 置 UIF */
     TIM3->SR   = (uint16_t)~TIM_SR_UIF;                /* 清 UIF, 防 Start 后虚计 */
     NVIC_ClearPendingIRQ(TIM3_IRQn);                   /* 清残留挂起中断 */
 
     BSP_EN2_Set(0);                                    /* 使能驱动 (电荷泵开始建立) */
+    /* [2026-11-14] ★电荷泵建立延时: 加入"空闲自动脱机"后, 驱动可能刚从 EN=高
+     * 恢复。TMC2209 的电荷泵需要约 1ms 才能建立, 若立刻发脉冲, 前几步会因
+     * 线圈电流不足而丢步(尤其在回零/定位的第一步)。这里固定等 2ms(留 2x 余量)。
+     * 代价: 每次动作多 2ms, 相对秒级的移动可忽略。 */
+    HAL_Delay(2);
     /* [2026-08-19 16:4x] Start_IT 前强制还原 HAL 状态 (双保险):
      * 新 HAL(v1.10+) 检查 ChannelState[CH2] (TIM_CHANNEL_STATE_GET) 且失败返回
      * HAL_ERROR; 旧 HAL 检查 htim->State。ISR 直接寄存器停后两者都可能残留,
@@ -229,6 +246,34 @@ uint8_t BSP_Motor_HomeDone(void)
 uint8_t BSP_Motor_HomeFail(void)
 {
     return home_fail;
+}
+
+/**
+  * @brief  [2026-11-14] 空闲超时自动脱机 —— 解决"电流已降到 0.275A 但用久了仍烫手"
+  * @note   动作结束后 TMC 以 IHOLD(≈0.14A) 持续通电保持力矩, 20mm 小电机散热面积小,
+  *         长时间累积会烫手。本函数在主循环里被反复调用: 一旦空闲超过
+  *         MOTOR_IDLE_OFF_MS 就把 EN 拉高脱机 → 电流归零、完全不发热。
+  *         下一次 BSP_Motor_Move 内部会 BSP_EN2_Set(0) 重新使能, 不影响动作。
+  *         ★MOTOR_IDLE_OFF_MS = 0 时不做任何事 (关闭该功能)。
+  *         ★只置 EN, 不改 motor_busy / 目标步数 —— 此时 PWM 已由 motor_halt 停掉。
+  */
+void BSP_Motor_IdleTick(void)
+{
+#if MOTOR_IDLE_OFF_MS > 0
+    static uint32_t last_busy_tick = 0;
+    static uint8_t  idle_off = 0;
+
+    if (motor_busy) {
+        last_busy_tick = HAL_GetTick();
+        idle_off = 0;                       /* 又动起来了, 清除"已脱机"标记 */
+        return;
+    }
+    if (idle_off) return;                   /* 已经脱机, 不重复操作 */
+    if ((HAL_GetTick() - last_busy_tick) >= MOTOR_IDLE_OFF_MS) {
+        BSP_EN2_Set(1);                     /* 脱机: 电流归零 */
+        idle_off = 1;
+    }
+#endif
 }
 
 /**
@@ -325,7 +370,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
 
     /*── 每步检查: 进入减速窗口 (加速中也可能触发 → 三角) ──*/
-    if ((motor_target - motor_count) <= ramp_decel_steps)
+    /* [2026-11-15] ★必须加 ramp_armed 判断: 斜坡关闭时若仍按 decel_steps 切到
+     * RAMP_DECEL, ISR 会把 ARR 往回加 → 末尾自动降速到 500Hz, 匀速就名存实亡。 */
+    if (ramp_armed && ((motor_target - motor_count) <= ramp_decel_steps))
         ramp_state = RAMP_DECEL;
 
     if (++ramp_tier_cnt >= MOTOR_RAMP_GRAN) {   /* 每 N 步调一档 ARR */
