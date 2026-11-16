@@ -94,14 +94,14 @@ uint8_t ADC_Consistency_Start(uint8_t threshold)
     if (U4_ReportIsRecent(ADC_CONSIST_U4_FRESH_MS)) {
         const uint16_t vals[3] = { u4_report.vo1, u4_report.vo2, u4_report.ams_adc };
         for (uint8_t i = 0; i < 3; i++) {
+            /* ★[2026-11-16] 恢复 CH3(ams_adc) 标度补偿, 且系数改正为 ×1.339。
+             * 实测 CH3: U4=1541 vs U1=2064/U7=2062 → 比例 0.747, 与原理图
+             * 分压 R3/(R2+R3)=56/74=0.757 吻合。CH1/CH2 只差 10/18 LSB, 不补偿。
+             * 历史上用的 1.17 太小(补完仍差 260 LSB), 已按实测更正。 */
             uint16_t v = vals[i];
-            /* [2026-11-13] U4 的 CH3(ams_adc) 标度补偿: 实测 U4 只有 U1/U7 同测点的
-             * 0.849~0.860 倍 (4 块板实测, 疑为 U4 PA6 处有分压)。此处统一换算到
-             * U1/U7 的标度 → ACK 里三芯片的值同标度、可直接互相对照, 判定也基于它。
-             * v ≤ 4095, ×117 = 479115 不溢出 uint32; ÷100 后 ≤ 4791 不溢出 uint16。 */
-            if (i == 2) {
-                v = (uint16_t)((uint32_t)v
-                               * ADC_CONSIST_U4_AMS_NUM / ADC_CONSIST_U4_AMS_DEN);
+            if (i == 2) {                       /* 仅 CH3 */
+                uint32_t t = (uint32_t)v * ADC_CONSIST_U4_AMS_NUM / ADC_CONSIST_U4_AMS_DEN;
+                v = (t > ADC_CONSIST_RAW_MAX) ? (uint16_t)ADC_CONSIST_RAW_MAX : (uint16_t)t;
             }
             adc_consist_buf[1][i * 4 + 1] = (uint8_t)(v >> 8);
             adc_consist_buf[1][i * 4 + 2] = (uint8_t)(v);

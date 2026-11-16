@@ -36,12 +36,8 @@
  * 把物件送回零点, 否则下一轮(③或④)起点就错了。
  * ★剩余依赖: 每次运行前物件必须在后挡块上 (由上一项测试的结束动作保证)。 */
 #define DIAM_CALIB_SKIP_HOME        1U      /* 1=跳过开头的回零 (物件已在零点) */
-#define DIAM_CALIB_RETURN_UM     2200U      /* [2026-11-13] 结束回程 2mm + 超压 0.2mm
-                                             * (原 2.5mm → 用户实测"回退的长了点") */
-#define DIAM_CALIB_RETURN_STEPS  3200U      /* [2026-11-14 用户指定] 回程 2.0mm × 1600 步/mm = 3200
-                                             * ★与最远前进量(2mm)等长 → 测完正好退回零点, 但不再"多压
-                                             *   0.2mm", 因此**失去自校正**; 若观察到逐轮前移,
-                                             *   把本值改回 3520 (2.2mm) 恢复顶压复位。 */
+#define DIAM_CALIB_RETURN_UM      600U      /* [2026-11-16] 回程 = 最远前进量 0.6mm (随测试点改小) */
+#define DIAM_CALIB_RETURN_STEPS   960U      /* 0.6mm × 1600 步/mm = 960, 正好退回对齐位置 */
 
 void     DiamCalib_Init(void);             /* 复位状态 */
 uint8_t  DiamCalib_Start(void);            /* 0=已启动, 1=BUSY */

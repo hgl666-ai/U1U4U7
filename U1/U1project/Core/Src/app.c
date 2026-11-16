@@ -214,7 +214,7 @@ static void APP_SendAdcResult(void)
     APP_SendEvent(MGR_CMD_ADC_RESULT, buf, APP_ADC_RESULT_LEN);
 }
 
-/*===== PROGRAM (非阻塞状态机, 双固件: Bootloader→App) =====*/
+/*===== PROGRAM (非阻塞状态机, 双固件: Bootloader→App) ===== */
 static void APP_ProgramStep(void)
 {
     /* 当前段偏移和大小(在case内复用) */
@@ -313,7 +313,15 @@ static void APP_ProgramStep(void)
     }
 }
 
-/*===== TEST (非阻塞状态机) =====*/
+/*===== TEST (非阻塞状态机) =====
+ * ★★[2026-11-16] 自测状态机整体关闭 (#if 0), 用于腾 Flash 给 ④ 调参 ★★
+ *   关闭后: 0x0113/CMP_TEST_U4/U7/ALL 一律回 APP_STATUS_ERR_TEST, 不再进入测试流程。
+ *   ★烧录流程 (APP_ProgramStep, 0x0112) **未受影响**, 仍是主流程。
+ *   不受影响的功能: ③ 0x0010 / ④ 0x0011 / 0x0020 一致性 / 0x0027 / 0x0029 /
+ *                   0x0028 / 0x0025,0x0026 点动 / SN 插入自动上报 / 0x0112 烧录
+ *   需要恢复自测时把 #if 0 改成 #if 1, 并恢复 dispatch 里三个 TEST case 与
+ *   APP_Run 里的 APP_STATE_TESTING 分支。 */
+#if 0
 static void APP_TestStep(void)
 {
     int ret;
@@ -429,6 +437,7 @@ static void APP_TestStep(void)
     default: test_step = 23; break;
     }
 }
+#endif   /* ★[2026-11-16] 自测状态机临时关闭 (烧录流程未受影响) */
 
 /*===== [2026-11-15] SN 读取 (供 0x0029 查询 和 插入自动检测 共用) =====
  *
@@ -817,29 +826,13 @@ static void APP_Dispatch(uint16_t cmd, uint8_t *data, uint16_t len)
         break;
     }
 
+    /* [2026-11-16] 三个自测命令已临时关闭 (APP_TestStep 被 #if 0),
+     * 直接回错误, 避免进入 APP_STATE_TESTING 后卡死。烧录流程不受影响。 */
     case APP_CMD_TEST_U4:
-        if (app_state != APP_STATE_IDLE) {
-            uint8_t e = APP_STATUS_BUSY; APP_SendAck(APP_CMD_TEST_U4, &e, 1); break;
-        }
-        test_step = 0; test_fail = 0; test_mode = 1;
-        app_state = APP_STATE_TESTING; APP_SetRGB(RGB_CYAN, 2);
-        break;
-
     case APP_CMD_TEST_U7:
-        if (app_state != APP_STATE_IDLE) {
-            uint8_t e = APP_STATUS_BUSY; APP_SendAck(APP_CMD_TEST_U7, &e, 1); break;
-        }
-        test_step = 17; test_fail = 0; test_mode = 2;
-        app_state = APP_STATE_TESTING; APP_SetRGB(RGB_CYAN, 2);
-        break;
-
-    case APP_CMD_TEST_ALL:
-        if (app_state != APP_STATE_IDLE) {
-            uint8_t e = APP_STATUS_BUSY; APP_SendAck(APP_CMD_TEST_ALL, &e, 1); break;
-        }
-        test_step = 0; test_fail = 0; test_mode = 0;
-        app_state = APP_STATE_TESTING; APP_SetRGB(RGB_CYAN, 2);
-        break;
+    case APP_CMD_TEST_ALL: {
+        uint8_t e = APP_STATUS_ERR_TEST; APP_SendAck(cmd, &e, 1); break;
+    }
 
     default: {
         uint8_t e = APP_STATUS_ERR_NIY; APP_SendAck(cmd, &e, 1); break;
@@ -1077,7 +1070,8 @@ void APP_Run(void)
 
     switch (app_state) {
         case APP_STATE_PROGRAMMING: APP_ProgramStep(); break;
-        case APP_STATE_TESTING:     APP_TestStep();    break;
+        /* [2026-11-16] 自测状态机已关闭, 该状态不会被进入 */
+        /* case APP_STATE_TESTING:     APP_TestStep();    break; */
         default: break;
     }
 }

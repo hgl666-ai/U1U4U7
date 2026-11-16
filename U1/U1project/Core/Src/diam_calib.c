@@ -11,18 +11,34 @@
  *   100ms settle delay -> wait new report -> read diameter ->
  *   check |Dactual-N|<=50um -> 25B summary ACK
  * direction: home stops at CW limit (IN1), move must use CCW into travel area
+ *
+ * ★★[2026-11-16] 判据改为"相对基准"★★
+ *   原判据 |Dactual − N| ≤ 50 里, Dactual 是 U4 的**绝对读数**(实测起点约 1750),
+ *   而 N 是"位移量"(200/400/600), 两者差一个固定偏置 → 永远 FAIL。
+ *   实测三次数据(起点 1748~1750): 位移 200/400/600 对应的读数变化是
+ *   179~182 / 411~415 / 582~585, 误差只有 11~21µm, **本来就在 50µm 容差内**。
+ *   所以新增 DC_BASELINE 阶段: 归零/设偏移之后、移动之前先读一次作为基准 L0,
+ *   每个位置判 | |L0 − Li| − N | ≤ 容差。ACK 里的 D 字段改为回"相对位移量",
+ *   这样和 N 放在一起可以直接对照。
  */
-enum { DC_IDLE = 0, DC_HOME, DC_ZERO, DC_SETOFFSET, DC_MOVE,
+enum { DC_IDLE = 0, DC_HOME, DC_ZERO, DC_SETOFFSET, DC_BASELINE, DC_MOVE,
        DC_WAIT_MOVE, DC_DELAY, DC_READ, DC_NEXT,
-       DC_RETURN, DC_WAIT_RETURN, DC_DONE };   /* [2026-11-13] 新增 RETURN/RETURN_WAIT */
+       DC_RETURN, DC_WAIT_RETURN, DC_DONE };
 
-static const uint16_t dc_target_um[DIAM_CALIB_POS_COUNT] = {1000, 1500, 2000};
+/* [2026-11-16] 测试点改为 0.2/0.4/0.6mm (原 1.0/1.5/2.0mm)
+ * ★原因(实测扫位置数据): 传感器读数是以约 2047 计数(≈2mm)为周期循环的,
+ *   并且从"磁铁对齐"位置往前约 1mm 处会读到 length=0 (超范围/盲区)。
+ *   原来的 1.0/1.5/2.0mm 正好跨过盲区并绕了一整圈, 所以 D 永远对不上 N。
+ *   现改为 0.2/0.4/0.6mm, 全部落在对齐位置往前的单调有效区间内。
+ * 步数: 200/400/600 um × 1600/1000 = 320/640/960, 每段增量 320 步。 */
+static const uint16_t dc_target_um[DIAM_CALIB_POS_COUNT] = {200, 400, 600};
 
 static uint8_t  dc_phase;
 static uint8_t  dc_pos_idx;                        /* current position 0..2 */
 static uint16_t dc_result_n[DIAM_CALIB_POS_COUNT]; /* target N */
-static uint16_t dc_result_d[DIAM_CALIB_POS_COUNT]; /* measured Dactual */
+static uint16_t dc_result_d[DIAM_CALIB_POS_COUNT]; /* 相对基准的位移量 (不是绝对读数) */
 static uint8_t  dc_result_pass[DIAM_CALIB_POS_COUNT];
+static uint16_t dc_base_len;                       /* [2026-11-16] 基准读数 L0 */
 
 static uint32_t mv_deadline;       /* motor settle deadline (500ms + steps*2ms) */
 static uint32_t dc_delay_deadline; /* 100ms settle delay deadline */
@@ -55,6 +71,7 @@ uint8_t DiamCalib_Start(void)
     dc_phase   = DC_HOME;
 #endif
     dc_pos_idx = 0;
+    dc_base_len = 0;
     /* clear results (all FAIL default) */
     for (uint8_t i = 0; i < DIAM_CALIB_POS_COUNT; i++) {
         dc_result_n[i]    = dc_target_um[i];
@@ -98,6 +115,24 @@ void DiamCalib_Run(void)
         int ret = U4_SetOffset(0);
         if (ret == U4_PROTO_PENDING) return;
         if (ret != U4_PROTO_OK) { dc_phase = DC_DONE; return; }
+        /* [2026-11-16] 进入 BASELINE: 先读一次绝对读数作为基准 */
+        u4_report_fresh  = 0;
+        dc_read_deadline = HAL_GetTick() + DIAM_CALIB_DUT_TIMEOUT_MS;
+        dc_phase = DC_BASELINE;
+        return;
+    }
+
+    /*-- [2026-11-16] BASELINE: 移动前读一次绝对读数 L0 作为基准 --
+     *   之后每个位置都判 | |L0 − Li| − N | ≤ 容差, 不再和绝对读数直接比。 */
+    if (dc_phase == DC_BASELINE) {
+        if (!u4_report_fresh) {
+            if (HAL_GetTick() > dc_read_deadline) {
+                dc_phase = DC_DONE;          /* 读不到基准 → 直接 FAIL 出结果 */
+            }
+            return;
+        }
+        u4_report_fresh = 0;                 /* consume */
+        dc_base_len = (uint16_t)u4_report.length;
         dc_phase = DC_MOVE;
         return;
     }
@@ -156,11 +191,17 @@ void DiamCalib_Run(void)
         }
         /* new report */
         u4_report_fresh = 0;   /* consume */
-        dc_result_d[dc_pos_idx] = (uint16_t)u4_report.length;
         {
             uint16_t n   = dc_result_n[dc_pos_idx];
-            uint16_t d   = dc_result_d[dc_pos_idx];
-            uint16_t err = (d > n) ? (d - n) : (n - d);
+            uint16_t d   = (uint16_t)u4_report.length;
+            /* [2026-11-16] 相对基准: delta = |L0 − D|, 再和 N 比。
+             * 原先是 |D − N|, 但 D 是绝对读数(起点约 1750), N 是位移量,
+             * 差一个固定偏置 → 永远 FAIL。实测改成相对后误差只有 11~21µm。 */
+            uint16_t delta = (dc_base_len > d) ? (uint16_t)(dc_base_len - d)
+                                              : (uint16_t)(d - dc_base_len);
+            uint16_t err = (delta > n) ? (uint16_t)(delta - n)
+                                       : (uint16_t)(n - delta);
+            dc_result_d[dc_pos_idx]    = delta;      /* ACK 里回"相对位移量" */
             dc_result_pass[dc_pos_idx] = (err <= DIAM_CALIB_TOLERANCE_UM) ? 1 : 0;
         }
         dc_phase = DC_NEXT;
